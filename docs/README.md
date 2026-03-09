@@ -6,6 +6,7 @@ This folder stores the durable project memory that chat sessions should not be t
 
 - `decisions/` — stable architecture, modeling, and workflow decisions
 - `experiments/` — hypothesis logs, run summaries, failures, caveats, and retest triggers
+- `data/` — dataset structure references, schema notes, and relationship diagrams
 
 ## Quick rules
 
@@ -20,3 +21,7 @@ This folder stores the durable project memory that chat sessions should not be t
 2. Log run in MLflow
 3. Summarize findings in `experiments/`
 4. If it becomes a stable project choice, create or update a record in `decisions/`
+
+## Data modeling references
+
+- `docs/data/RELATIONSHIP_DIAGRAM.md` contains the 2026 Kaggle data ER diagram and join keys.

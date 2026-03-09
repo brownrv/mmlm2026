@@ -37,11 +37,13 @@ This file must stay aligned with `AGENTS.md`.
 ## Data Rules
 
 - Never modify `data/raw/`.
+- Current Kaggle raw snapshot is in `data/raw/march-machine-learning-mania-2026/`.
 - Use `data/interim/` for intermediate transforms/joins.
 - Use `data/processed/` for cleaned structured datasets.
 - Use `data/features/` for model-ready feature tables.
 - Use `data/submissions/` for generated submission files.
 - Use `data/manifests/` for data/version metadata.
+- Use `docs/data/RELATIONSHIP_DIAGRAM.md` as the canonical join-key and table-relationship reference.
 
 ## Experiment and Decision Memory
 
@@ -64,8 +66,8 @@ ID,Pred
 YYYY_1101_1203,0.63
 ```
 
-- `ID = Season_Team1_Team2` (use season from competition row).
-- `Pred = probability Team1 wins`.
+- `ID = Season_LowTeamID_HighTeamID` (lower TeamID first).
+- `Pred = probability that the lower TeamID team wins`.
 - Do not submit exact `0` or `1`; default clipping: `0.025 <= p <= 0.975`.
 
 ## Standard Commands

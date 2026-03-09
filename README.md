@@ -1,6 +1,18 @@
 # mmlm2026
 mmlm2026 is a clean-room Kaggle research repository for March Machine Learning Mania 2026. Its purpose is to maximize leaderboard performance while maintaining strong experimental discipline, reproducibility, and long-term learning.
 
+## Competition references
+
+- Dataset: `data/raw/march-machine-learning-mania-2026/`
+- Overview/rules source: `docs/march-machine-learning-mania-2026 - Overview and Data and Rules.docx`
+- Dataset relationships: `docs/data/RELATIONSHIP_DIAGRAM.md`
+
+Key rules to keep front-of-mind:
+- Combined men's + women's forecasting in one submission.
+- Brier score evaluation.
+- Submission `ID` is `Season_LowTeamID_HighTeamID`.
+- `Pred` is probability that the lower TeamID team wins.
+
 ## Dev commands
 
 ```powershell

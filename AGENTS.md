@@ -70,6 +70,9 @@ from mmlm2026.features.seed_features import build_seed_features
 ### Raw data is immutable
 Never modify files in `data/raw/`.
 
+Current Kaggle raw snapshot is stored at:
+- `data/raw/march-machine-learning-mania-2026/`
+
 ### Interim data
 Intermediate outputs from cleaning and joins go in `data/interim/`.
 
@@ -84,6 +87,9 @@ Generated competition submissions belong in `data/submissions/`.
 
 ### Manifests
 Data versions and metadata manifests belong in `data/manifests/`.
+
+### Relationship reference
+Use `docs/data/RELATIONSHIP_DIAGRAM.md` for join keys and table relationships.
 
 ---
 
@@ -143,8 +149,8 @@ YYYY_1102_1304,0.48
 ```
 
 Where:
-- `ID = Season_Team1_Team2` (use the season value from the competition data for that row)
-- `Pred = probability Team1 wins`
+- `ID = Season_LowTeamID_HighTeamID` (lower TeamID must be first)
+- `Pred = probability that the lower TeamID team wins`
 
 Example season-specific IDs:
 - `2024_1101_1203`
