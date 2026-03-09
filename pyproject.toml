@@ -1,0 +1,49 @@
+[project]
+name = "mmlm2026"
+version = "0.1.0"
+description = "mmlm2026 is a clean-room Kaggle research repository for March Machine Learning Mania 2026. Its purpose is to maximize leaderboard performance while maintaining strong experimental discipline, reproducibility, and long-term learning."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mlflow>=3.10.1",
+    "numpy>=2.4.3",
+    "pandas>=2.3.3",
+    "pyarrow>=23.0.1",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.5",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+no_implicit_optional = true
+disallow_untyped_defs = false
