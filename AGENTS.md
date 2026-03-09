@@ -90,6 +90,19 @@ Data versions and metadata manifests belong in `data/manifests/`.
 
 ### Relationship reference
 Use `docs/data/RELATIONSHIP_DIAGRAM.md` for join keys and table relationships.
+Use `docs/data/TOURNEY_ROUND_ASSIGNMENT.md` for NCAA round assignment rules.
+Use `docs/data/TEAM_SPELLINGS_POLICY.md` for canonical team-name mapping rules.
+
+### NCAA round assignment
+- Determine tournament rounds from normalized seed-pair lookup via `data/tourney_round_lookup.csv`.
+- Canonical implementation is `assign_rounds_from_seeds(tc, seeds)` in `src/mmlm2026/round_utils.py`.
+- Do not infer NCAA tournament round from `DayNum`.
+- `DayNum < 134` filtering for Elo cutoffs is a separate purpose and remains valid.
+
+### Team spellings source of truth
+- Prefer `data/TeamSpellings.csv` as the canonical team-spelling mapping.
+- Treat Kaggle `MTeamSpellings.csv` and `WTeamSpellings.csv` as upstream sources, not final mapping tables.
+- If Kaggle adds new spellings, merge missing entries into `data/TeamSpellings.csv` to keep it a superset.
 
 ---
 

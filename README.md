@@ -6,12 +6,16 @@ mmlm2026 is a clean-room Kaggle research repository for March Machine Learning M
 - Dataset: `data/raw/march-machine-learning-mania-2026/`
 - Overview/rules source: `docs/march-machine-learning-mania-2026 - Overview and Data and Rules.docx`
 - Dataset relationships: `docs/data/RELATIONSHIP_DIAGRAM.md`
+- Tournament round assignment: `docs/data/TOURNEY_ROUND_ASSIGNMENT.md`
+- Team spellings policy: `docs/data/TEAM_SPELLINGS_POLICY.md`
 
 Key rules to keep front-of-mind:
 - Combined men's + women's forecasting in one submission.
 - Brier score evaluation.
 - Submission `ID` is `Season_LowTeamID_HighTeamID`.
 - `Pred` is probability that the lower TeamID team wins.
+- NCAA tournament round is determined from normalized seed pairs, not `DayNum`.
+- Team name mapping should use `data/TeamSpellings.csv` as canonical.
 
 ## Dev commands
 

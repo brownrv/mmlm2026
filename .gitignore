@@ -210,7 +210,10 @@ __marimo__/
 
 # Project-specific
 .venv/
-data/
+data/*
 logs/
 !docs/data/
 !docs/data/**
+!data/README.md
+!data/TeamSpellings.csv
+!data/tourney_round_lookup.csv

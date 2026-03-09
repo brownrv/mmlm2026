@@ -44,6 +44,11 @@ This file must stay aligned with `AGENTS.md`.
 - Use `data/submissions/` for generated submission files.
 - Use `data/manifests/` for data/version metadata.
 - Use `docs/data/RELATIONSHIP_DIAGRAM.md` as the canonical join-key and table-relationship reference.
+- Use `docs/data/TOURNEY_ROUND_ASSIGNMENT.md` as the canonical NCAA round-assignment reference.
+- Use `docs/data/TEAM_SPELLINGS_POLICY.md` as the canonical team-spellings policy.
+- Determine NCAA round from normalized seed-pair lookup (`data/tourney_round_lookup.csv`), not from `DayNum`.
+- `DayNum < 134` filtering for Elo cutoffs is separate and still valid.
+- Prefer `data/TeamSpellings.csv` for mapping team name spellings; treat Kaggle `MTeamSpellings.csv` and `WTeamSpellings.csv` as upstream sources only.
 
 ## Experiment and Decision Memory
 

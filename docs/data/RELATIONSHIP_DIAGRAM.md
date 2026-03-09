@@ -11,6 +11,8 @@ This document summarizes table relationships for:
 - Evaluation metric is Brier score.
 - Submission `ID` format is `Season_LowTeamID_HighTeamID`.
 - `Pred` is the probability that the lower TeamID team wins.
+- Tournament round assignment is seed-pair based, not `DayNum` based.
+- Team spelling normalization should use `data/TeamSpellings.csv` as canonical.
 
 ## Entity Relationship Diagram
 
@@ -22,6 +24,7 @@ erDiagram
     MSEASONS ||--o{ MNCAATOURNEYDETAILEDRESULTS : "Season"
     MSEASONS ||--o{ MNCAATOURNEYSEEDS : "Season"
     MSEASONS ||--o{ MNCAATOURNEYSLOTS : "Season"
+    MSEASONS ||--o{ TOURNEYROUNDLOOKUP : "via seed-pair mapping logic"
     MSEASONS ||--o{ MTEAMCONFERENCES : "Season"
     MSEASONS ||--o{ MCONFERENCETOURNEYGAMES : "Season"
     MSEASONS ||--o{ MSECONDARYTOURNEYCOMPACTRESULTS : "Season"
@@ -36,6 +39,7 @@ erDiagram
     WSEASONS ||--o{ WNCAATOURNEYDETAILEDRESULTS : "Season"
     WSEASONS ||--o{ WNCAATOURNEYSEEDS : "Season"
     WSEASONS ||--o{ WNCAATOURNEYSLOTS : "Season"
+    WSEASONS ||--o{ TOURNEYROUNDLOOKUP : "via seed-pair mapping logic"
     WSEASONS ||--o{ WTEAMCONFERENCES : "Season"
     WSEASONS ||--o{ WCONFERENCETOURNEYGAMES : "Season"
     WSEASONS ||--o{ WSECONDARYTOURNEYCOMPACTRESULTS : "Season"
@@ -80,6 +84,8 @@ erDiagram
     MNCAATOURNEYCOMPACTRESULTS ||--o| MNCAATOURNEYDETAILEDRESULTS : "Season-DayNum-WTeamID-LTeamID (subset)"
     WREGULARSEASONCOMPACTRESULTS ||--o| WREGULARSEASONDETAILEDRESULTS : "Season-DayNum-WTeamID-LTeamID (subset)"
     WNCAATOURNEYCOMPACTRESULTS ||--o| WNCAATOURNEYDETAILEDRESULTS : "Season-DayNum-WTeamID-LTeamID (subset)"
+    MNCAATOURNEYSEEDS ||--o{ TOURNEYROUNDLOOKUP : "StrongSeed/WeakSeed after seed normalization"
+    WNCAATOURNEYSEEDS ||--o{ TOURNEYROUNDLOOKUP : "StrongSeed/WeakSeed after seed normalization"
 ```
 
 ## Practical Join Keys
@@ -88,6 +94,8 @@ erDiagram
   - `Season, DayNum, WTeamID, LTeamID`
 - Team-season joins:
   - `Season, TeamID`
+- Team spelling joins:
+  - `TeamNameSpelling` via `data/TeamSpellings.csv` (master mapping)
 - Conference joins:
   - `ConfAbbrev`
 - City joins:
@@ -98,4 +106,8 @@ erDiagram
 - Men's TeamIDs and women's TeamIDs do not overlap.
 - `W*` / `L*` columns in result files mean winning/losing team, not women/men.
 - Detailed results are a subset of compact results by season coverage (not every compact row has a detailed row).
+- Canonical round assignment is derived from normalized seed pairings using `data/tourney_round_lookup.csv`.
+- Play-in detection rule: if normalized seeds are identical (`W16a` vs `W16b` -> `W16`), assign `Round = 0`.
+- Do not identify NCAA tournament round using `DayNum`.
+- Prefer `data/TeamSpellings.csv` over Kaggle `MTeamSpellings.csv`/`WTeamSpellings.csv` in project pipelines.
 - For predictive modeling, normalize game rows into team-vs-team orientation before feature creation.
