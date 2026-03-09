@@ -27,12 +27,18 @@ uv run pytest
 uv run ruff check .
 uv run ruff format .
 uv run mypy src
+uv run python scripts/new_experiment.py "<title>"
+uv run python scripts/new_decision.py "<title>"
+uv run python scripts/check_memory_update.py
+uv run python scripts/check_changed_file_policies.py --base <base_sha> --head <head_sha>
 ```
 
 Pre-commit workflow:
 1. Run `uv run pre-commit install` once per clone.
 2. Run `uv run pre-commit run --all-files` before opening a PR.
 3. Let the git hook run on every commit and stage any auto-fixes it applies.
+4. If a commit intentionally skips memory-doc updates for trivial changes, use:
+   `ALLOW_NO_MEMORY_UPDATE=1 git commit ...`
 
 PowerShell helper:
 
@@ -46,3 +52,18 @@ PowerShell helper:
 ./scripts/dev.ps1 typecheck
 ./scripts/dev.ps1 all
 ```
+
+Research memory automation:
+
+```powershell
+uv run python scripts/new_experiment.py "seed-diff baseline refresh" --owner "your-name"
+uv run python scripts/new_decision.py "round assignment uses seed-pair lookup" --owners "repo maintainers"
+uv run python scripts/check_memory_update.py
+uv run python scripts/check_changed_file_policies.py --base <base_sha> --head <head_sha>
+```
+
+How these 4 automations are called:
+1. `new_experiment.py`: manual command (or optional `gh` issue creation via `--create-issue`).
+2. `new_decision.py`: manual command.
+3. `check_memory_update.py`: runs automatically in pre-commit; can also be run manually.
+4. `check_changed_file_policies.py`: runs automatically in CI; can also be run manually.

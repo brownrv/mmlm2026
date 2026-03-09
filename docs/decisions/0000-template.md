@@ -1,7 +1,7 @@
 # ADR 0000: <short decision title>
 
-Status: Proposed  
-Date: YYYY-MM-DD  
+Status: Proposed
+Date: YYYY-MM-DD
 Owners: <name or team>
 
 ## Context

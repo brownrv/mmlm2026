@@ -14,6 +14,7 @@ Approach
 DO NOT use DayNum for round assignment.  DayNum < 134 filtering for Elo
 game cutoffs is unrelated and remains correct.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -58,8 +59,7 @@ def assign_rounds_from_seeds(
         rl_dict[(w, s)] = rnd
 
     seed_map: dict[tuple[int, int], str] = {
-        (int(r["Season"]), int(r["TeamID"])): str(r["Seed"])
-        for _, r in seeds.iterrows()
+        (int(r["Season"]), int(r["TeamID"])): str(r["Seed"]) for _, r in seeds.iterrows()
     }
 
     tc = tc.copy()
@@ -69,6 +69,9 @@ def assign_rounds_from_seeds(
     ls_norm = ls.str.rstrip("ab")
 
     is_playin = ws_norm == ls_norm
-    tc["Round"] = [rl_dict.get((w, l), -1) for w, l in zip(ws_norm, ls_norm)]
+    tc["Round"] = [
+        rl_dict.get((winner_seed, loser_seed), -1)
+        for winner_seed, loser_seed in zip(ws_norm, ls_norm, strict=False)
+    ]
     tc.loc[is_playin, "Round"] = 0
     return tc

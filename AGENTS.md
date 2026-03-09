@@ -12,7 +12,7 @@ The project focuses on:
 - Kaggle submission generation
 - documented assumptions and decision history
 
-Primary language: Python  
+Primary language: Python
 Primary environment: Python 3.11
 
 ---
@@ -201,6 +201,26 @@ uv run ruff format .
 Type check:
 ```bash
 uv run mypy src
+```
+
+Create experiment note:
+```bash
+uv run python scripts/new_experiment.py "<title>" --owner "<owner>"
+```
+
+Create decision record:
+```bash
+uv run python scripts/new_decision.py "<title>" --owners "<owners>"
+```
+
+Memory discipline check (manual run):
+```bash
+uv run python scripts/check_memory_update.py
+```
+
+Changed-file policy check (manual run):
+```bash
+uv run python scripts/check_changed_file_policies.py --base <base_sha> --head <head_sha>
 ```
 
 Install pre-commit hooks:

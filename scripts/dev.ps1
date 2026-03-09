@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("sync", "hooks-install", "hooks-run", "test", "lint", "format", "typecheck", "all")]
+    [ValidateSet("sync", "hooks-install", "hooks-run", "new-experiment", "new-decision", "test", "lint", "format", "typecheck", "all")]
     [string]$Command
 )
 
@@ -11,6 +11,12 @@ switch ($Command) {
     "sync" { uv sync; break }
     "hooks-install" { uv run pre-commit install; break }
     "hooks-run" { uv run pre-commit run --all-files; break }
+    "new-experiment" {
+        throw "Use: uv run python scripts/new_experiment.py \"<title>\" [--owner ...]"
+    }
+    "new-decision" {
+        throw "Use: uv run python scripts/new_decision.py \"<title>\" [--owners ...]"
+    }
     "test" { uv run pytest; break }
     "lint" { uv run ruff check .; break }
     "format" { uv run ruff format .; break }

@@ -27,3 +27,4 @@ This folder stores the durable project memory that chat sessions should not be t
 - `docs/data/RELATIONSHIP_DIAGRAM.md` contains the 2026 Kaggle data ER diagram and join keys.
 - `docs/data/TOURNEY_ROUND_ASSIGNMENT.md` defines canonical NCAA round assignment from seed pairs.
 - `docs/data/TEAM_SPELLINGS_POLICY.md` defines canonical team-spellings source-of-truth rules.
+- `docs/roadmaps/RESEARCH_MEMORY_AUTOMATION.md` documents current memory-system automation and manual responsibilities.

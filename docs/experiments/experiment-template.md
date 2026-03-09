@@ -1,7 +1,7 @@
 # Experiment: <short experiment title>
 
-Date: YYYY-MM-DD  
-Owner: <name>  
+Date: YYYY-MM-DD
+Owner: <name>
 Status: Proposed | Running | Completed | Revisit | Retired
 
 ## Hypothesis

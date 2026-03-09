@@ -12,6 +12,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Changed-file policy checks
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          HEAD_SHA="${{ github.sha }}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Skipping changed-file policy checks (no valid base SHA)."
+            exit 0
+          fi
+          python scripts/check_changed_file_policies.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v6

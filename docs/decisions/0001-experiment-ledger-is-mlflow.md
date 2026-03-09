@@ -1,7 +1,7 @@
 # ADR 0001: MLflow is the primary experiment ledger
 
-Status: Accepted  
-Date: 2026-03-09  
+Status: Accepted
+Date: 2026-03-09
 Owners: repo maintainers
 
 ## Context

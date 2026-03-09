@@ -1,4 +1,13 @@
 repos:
+  - repo: local
+    hooks:
+      - id: memory-discipline
+        name: memory discipline
+        entry: uv run python scripts/check_memory_update.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

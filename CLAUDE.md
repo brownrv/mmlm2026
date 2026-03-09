@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Concise Claude-specific operating guide for this repo.  
+Concise Claude-specific operating guide for this repo.
 This file must stay aligned with `AGENTS.md`.
 
 ## Sync Policy (No Drift)
@@ -85,6 +85,10 @@ uv run ruff format .
 uv run mypy src
 uv run pre-commit install
 uv run pre-commit run --all-files
+uv run python scripts/new_experiment.py "<title>" --owner "<owner>"
+uv run python scripts/new_decision.py "<title>" --owners "<owners>"
+uv run python scripts/check_memory_update.py
+uv run python scripts/check_changed_file_policies.py --base <base_sha> --head <head_sha>
 ```
 
 Pre-commit workflow:
