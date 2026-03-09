@@ -1,0 +1,96 @@
+# CLAUDE.md
+
+Concise Claude-specific operating guide for this repo.  
+This file must stay aligned with `AGENTS.md`.
+
+## Sync Policy (No Drift)
+
+- `AGENTS.md` and `CLAUDE.md` are a paired policy set.
+- Any rule change in one file must be reflected in the other in the same PR.
+- If there is conflict, treat `AGENTS.md` as canonical and immediately update `CLAUDE.md`.
+
+## Project Scope
+
+- Kaggle March Machine Learning Mania modeling and data pipelines.
+- Goal: reproducible experiments, modular features, MLflow tracking, reliable submissions.
+- Stack: Python 3.11.
+
+## Repository Map
+
+- Code: `src/mmlm2026/`
+- Notebooks: `notebooks/`
+- Scripts: `scripts/`
+- Tests: `tests/`
+- Data: `data/raw/`, `data/interim/`, `data/processed/`, `data/features/`, `data/submissions/`, `data/manifests/`
+- Docs: `docs/decisions/`, `docs/experiments/`, `docs/roadmaps/` (`docs/roadmap.md` is a placeholder starter)
+
+## Development Rules
+
+- Keep production logic in `src/`; move reusable notebook logic into `src/`.
+- Never leave durable production logic only in notebooks.
+- Prefer small functions, explicit naming, type hints, and docstrings for public APIs.
+- Use absolute imports (example: `from mmlm2026.features.seed_features import build_seed_features`).
+- Avoid large refactors unless requested.
+- Write small, reviewable commits.
+- Do not silently change evaluation assumptions or evaluation logic.
+
+## Data Rules
+
+- Never modify `data/raw/`.
+- Use `data/interim/` for intermediate transforms/joins.
+- Use `data/processed/` for cleaned structured datasets.
+- Use `data/features/` for model-ready feature tables.
+- Use `data/submissions/` for generated submission files.
+- Use `data/manifests/` for data/version metadata.
+
+## Experiment and Decision Memory
+
+- Track significant runs in MLflow with params, metrics, artifacts, commit SHA, branch, data/feature version, and hypothesis.
+- Recommended MLflow tags: `hypothesis`, `depends_on`, `retest_if`, `model_family`, `season_window`.
+- Stable decisions go in `docs/decisions/`.
+- Experiment notes, failures, caveats, and retest triggers go in `docs/experiments/`.
+- Use markers in notes: `Dependencies:`, `Invalidated by:`, `Re-test if:`.
+- After meaningful tests, update experiment logs in `docs/experiments/`.
+- Record assumptions and explicit retest triggers in experiment notes and decision records.
+- If an assumption changes, search `docs/experiments/` and `docs/decisions/` for impacted work.
+- If a new idea is promising but incomplete, create an Issue so it is not lost in chat.
+
+## Submission Rules
+
+- CSV schema:
+
+```csv
+ID,Pred
+YYYY_1101_1203,0.63
+```
+
+- `ID = Season_Team1_Team2` (use season from competition row).
+- `Pred = probability Team1 wins`.
+- Do not submit exact `0` or `1`; default clipping: `0.025 <= p <= 0.975`.
+
+## Standard Commands
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check .
+uv run ruff format .
+uv run mypy src
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
+Pre-commit workflow:
+1. Install once per clone.
+2. Run all hooks before PR.
+3. Let commit hooks run and stage auto-fixes.
+
+## Preferred Workflow
+
+1. Explore ideas in notebooks.
+2. Move reusable logic to `src/`.
+3. Add tests.
+4. Track runs in MLflow.
+5. Record findings in `docs/experiments/`.
+6. Create submissions only after validation.
+7. Promote stable assumptions into `docs/decisions/` with invalidation criteria.

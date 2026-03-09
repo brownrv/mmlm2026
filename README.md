@@ -13,6 +13,11 @@ uv run ruff format .
 uv run mypy src
 ```
 
+Pre-commit workflow:
+1. Run `uv run pre-commit install` once per clone.
+2. Run `uv run pre-commit run --all-files` before opening a PR.
+3. Let the git hook run on every commit and stage any auto-fixes it applies.
+
 PowerShell helper:
 
 ```powershell
