@@ -212,6 +212,7 @@ __marimo__/
 .venv/
 data/*
 logs/
+mlruns/
 !docs/data/
 !docs/data/**
 !data/README.md

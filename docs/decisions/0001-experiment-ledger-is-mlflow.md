@@ -48,5 +48,5 @@ Each tool answers a different question:
 - docs/experiments/experiment-log.md
 
 ## Follow-up Actions
-- [ ] Add git SHA and branch tags to all runs
-- [ ] Create a reusable MLflow logging helper
+- [x] Add git SHA and branch tags to all runs — implemented via `git_context()` in `src/mmlm2026/utils/mlflow_tracking.py`
+- [x] Create a reusable MLflow logging helper — `src/mmlm2026/utils/mlflow_tracking.py`

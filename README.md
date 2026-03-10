@@ -3,6 +3,7 @@ mmlm2026 is a clean-room Kaggle research repository for March Machine Learning M
 
 ## Competition references
 
+- Operational checklist: `MASTER_CHECKLIST.md`
 - Dataset: `data/raw/march-machine-learning-mania-2026/`
 - Overview/rules source: `docs/march-machine-learning-mania-2026 - Overview and Data and Rules.docx`
 - Dataset relationships: `docs/data/RELATIONSHIP_DIAGRAM.md`

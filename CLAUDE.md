@@ -1,3 +1,4 @@
+<!-- Audience: Claude Code. Codex and other agents should follow AGENTS.md. -->
 # CLAUDE.md
 
 Concise Claude-specific operating guide for this repo.
@@ -8,6 +9,7 @@ This file must stay aligned with `AGENTS.md`.
 - `AGENTS.md` and `CLAUDE.md` are a paired policy set.
 - Any rule change in one file must be reflected in the other in the same PR.
 - If there is conflict, treat `AGENTS.md` as canonical and immediately update `CLAUDE.md`.
+- `MASTER_CHECKLIST.md` is the operational checklist source of truth; update it when workflows/tools/policies change.
 
 ## Project Scope
 
@@ -22,7 +24,7 @@ This file must stay aligned with `AGENTS.md`.
 - Scripts: `scripts/`
 - Tests: `tests/`
 - Data: `data/raw/`, `data/interim/`, `data/processed/`, `data/features/`, `data/submissions/`, `data/manifests/`
-- Docs: `docs/decisions/`, `docs/experiments/`, `docs/roadmaps/` (`docs/roadmap.md` is a placeholder starter)
+- Docs: `docs/decisions/`, `docs/experiments/`, `docs/roadmaps/` (`docs/roadmaps/roadmap.md` is the canonical working roadmap)
 
 ## Development Rules
 
@@ -53,7 +55,11 @@ This file must stay aligned with `AGENTS.md`.
 ## Experiment and Decision Memory
 
 - Track significant runs in MLflow with params, metrics, artifacts, commit SHA, branch, data/feature version, and hypothesis.
-- Recommended MLflow tags: `hypothesis`, `depends_on`, `retest_if`, `model_family`, `season_window`.
+- Recommended MLflow tags: `hypothesis`, `depends_on`, `retest_if`, `model_family`, `season_window`, `league`.
+- MLflow operations:
+- default tracking URI is `./mlruns/` (gitignored)
+- launch UI with `uv run mlflow ui` and open `http://localhost:5000`
+- before final submission, back up `mlruns/` to a separate location (do not commit it)
 - Stable decisions go in `docs/decisions/`.
 - Experiment notes, failures, caveats, and retest triggers go in `docs/experiments/`.
 - Use markers in notes: `Dependencies:`, `Invalidated by:`, `Re-test if:`.

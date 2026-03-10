@@ -1,3 +1,4 @@
+<!-- Audience: Codex and general agents. Claude Code additionally reads CLAUDE.md. -->
 # AGENTS.md
 
 ## Project Overview
@@ -35,7 +36,7 @@ repo/
 ├─ docs/
 │  ├─ decisions/           # ADR-style decision records
 │  ├─ experiments/         # Experiment notes and research logs
-│  └─ roadmaps/            # Roadmap documents (roadmap.md is placeholder)
+│  └─ roadmaps/            # Roadmap documents (canonical: docs/roadmaps/roadmap.md)
 └─ tests/                  # Unit tests
 ```
 
@@ -126,6 +127,22 @@ Recommended tags:
 - `retest_if`
 - `model_family`
 - `season_window`
+- `league`
+
+---
+
+## MLflow Operations
+
+Default tracking URI: `./mlruns/` (relative to project root; gitignored).
+
+Launch the MLflow UI:
+```bash
+uv run mlflow ui
+```
+Then open `http://localhost:5000` to browse runs, compare metrics, and download artifacts.
+
+Backup: before final competition submission, snapshot `mlruns/` to a separate backup
+location (external drive, cloud storage, or private branch). Do not commit `mlruns/`.
 
 ---
 
@@ -137,6 +154,10 @@ Experiment notes, failed attempts, caveats, and retest triggers belong in
 `docs/experiments/`.
 
 When an assumption changes, agents should search these folders for impacted items.
+
+Operational checklist source of truth:
+- `MASTER_CHECKLIST.md` at repo root.
+- When workflows/tools/policies change, update `MASTER_CHECKLIST.md` in the same PR.
 
 ### Dependency tagging pattern
 Use consistent markers in decision and experiment notes:

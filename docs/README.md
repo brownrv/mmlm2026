@@ -24,7 +24,10 @@ This folder stores the durable project memory that chat sessions should not be t
 
 ## Data modeling references
 
+- `MASTER_CHECKLIST.md` is the one-stop operational reminder checklist.
 - `docs/data/RELATIONSHIP_DIAGRAM.md` contains the 2026 Kaggle data ER diagram and join keys.
+- `docs/data/FILE_CATALOG.md` summarizes all competition files, keys, and usage roles.
 - `docs/data/TOURNEY_ROUND_ASSIGNMENT.md` defines canonical NCAA round assignment from seed pairs.
 - `docs/data/TEAM_SPELLINGS_POLICY.md` defines canonical team-spellings source-of-truth rules.
 - `docs/roadmaps/RESEARCH_MEMORY_AUTOMATION.md` documents current memory-system automation and manual responsibilities.
+- `docs/COMPETITION_OPERATIONS.md` captures timeline/limits/submission operations and update workflow.

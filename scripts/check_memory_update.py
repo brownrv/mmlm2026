@@ -24,7 +24,7 @@ def main() -> None:
         return
 
     changed = staged_files()
-    src_changed = any(path.startswith("src/") for path in changed)
+    src_changed = any(path.startswith("src/mmlm2026/") for path in changed)
     memory_changed = any(
         path.startswith("docs/experiments/") or path.startswith("docs/decisions/")
         for path in changed
@@ -33,7 +33,7 @@ def main() -> None:
     if src_changed and not memory_changed:
         raise SystemExit(
             "Memory discipline check failed:\n"
-            "- Detected staged changes in src/\n"
+            "- Detected staged changes in src/mmlm2026/\n"
             "- No staged updates in docs/experiments/ or docs/decisions/\n\n"
             "If this is intentionally trivial, bypass with:\n"
             "ALLOW_NO_MEMORY_UPDATE=1 git commit ...\n"

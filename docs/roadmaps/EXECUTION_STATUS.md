@@ -1,9 +1,53 @@
-# Setup Plan Execution Status
+# Execution Status
 
-Last updated: 2026-03-09
-Source plan: `docs/roadmaps/SETUP_PLAN.md`
+Last updated: 2026-03-10
 
-## Phase Status (1-12)
+> **Note:** `docs/roadmaps/SETUP_PLAN.md` has been archived to
+> `docs/roadmaps/archive/SETUP_PLAN.md` (2026-03-09). All 12 phases were complete.
+
+---
+
+## PLAN-001: Repository Improvement and Agent UX Hardening
+
+Source plan: `docs/roadmaps/PLAN-001-repo-improvements.md`
+
+### Phase 1 — Critical Blockers
+
+| Task | Status | Notes |
+|---|---|---|
+| P1-1: Add `mlruns/` to `.gitignore` | Complete | `mlruns/` added under project-specific ignores; `git check-ignore -v mlruns/` confirms ignore. |
+| P1-2: Add AI session restart reminder to `MASTER_CHECKLIST.md` | Complete | Reminder added in “After Reboot / New Session”. |
+| P1-3: Document stdlib-only constraint in CI step name | Complete | CI step renamed to explicitly call out stdlib-only pre-uv execution. |
+
+### Phase 2 — Documentation Hygiene
+
+| Task | Status | Notes |
+|---|---|---|
+| P2-1: Consolidate duplicate roadmap files | Complete | Merged roadmap content into `docs/roadmaps/roadmap.md`; `docs/roadmap.md` now redirects; roadmap note updated in `CLAUDE.md` and `AGENTS.md`. |
+| P2-2: Add `league` MLflow tag to `AGENTS.md` and `CLAUDE.md` | Complete | `league` added to recommended MLflow tags in both files. |
+| P2-3: Add MLflow UI and backup guidance to `AGENTS.md` | Complete | Added `## MLflow Operations` in `AGENTS.md` and mirrored operational note in `CLAUDE.md`. |
+| P2-4: Mark completed follow-up actions in ADR 0001 | Complete | Both follow-up actions are checked with implementation references. |
+| P2-5: Add audience headers to `CLAUDE.md` and `AGENTS.md` | Complete | Audience HTML comments added as first line in both files. |
+| P2-6: Add initial experiment log stub entry | Complete | Added dated infrastructure milestone entry to `docs/experiments/experiment-log.md`. |
+| P2-7: Create M+W modeling strategy ADR skeleton | Complete (awaiting human decision) | Created `docs/decisions/0004-men-women-tournament-modeling-strategy.md` with `[HUMAN DECISION REQUIRED]` decision placeholder. |
+
+### Phase 3 — Agent UX Improvements
+
+| Task | Status | Notes |
+|---|---|---|
+| P3-1: Narrow memory discipline hook scope | Complete | Hook now targets `src/mmlm2026/` only and message text was updated accordingly. |
+| P3-2: Add `ruff format --check` to CI | Complete | Added `Ruff format check` step directly after lint in CI workflow. |
+| P3-3: Enable `disallow_untyped_defs` in mypy | Complete | Set `disallow_untyped_defs = true` and validated `uv run mypy src` passes. |
+| P3-4: Expand `HUMAN_AGENT_WORKFLOW.md` | Complete | Added delegation guidance, verification checklist, and session-start context template. |
+| P3-5: Add usage example to `mlflow_tracking.py` | Complete | Expanded `start_tracked_run()` docstring with full recommended tags including `league`. |
+
+---
+
+## Original Setup Plan — Phases 1-12
+
+Source plan: `docs/roadmaps/archive/SETUP_PLAN.md` (archived 2026-03-09)
+
+### Phase Status (1-12)
 
 | Phase | Status | Evidence |
 |---|---|---|
@@ -20,7 +64,7 @@ Source plan: `docs/roadmaps/SETUP_PLAN.md`
 | Phase 11 - Modeling Roadmap | Complete | Added staged roadmap in `docs/roadmaps/MODELING_ROADMAP.md`; stage-1 scaffolding implemented in `src/mmlm2026/{data,evaluation,submission,utils}` with initial tests. |
 | Phase 12 - Human + Agent Workflow | Complete | Workflow documented in `docs/roadmaps/HUMAN_AGENT_WORKFLOW.md` and mirrored in agent instructions. |
 
-## Notes
+### Notes
 
 - Phase 1 GitHub-hosted settings (visibility, template choices) are not directly verifiable from local files alone.
 - Phase 8 includes manual GitHub-side steps (labels/board) that cannot be created from local files alone.
