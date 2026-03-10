@@ -29,6 +29,37 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-10 — Gate 1: Feature Phase B builders implemented
+
+Status: Completed
+
+Hypothesis:
+- Reusable Phase B season-level feature builders will let primary-model experiments move beyond seed and Elo baselines without forcing feature logic to live in notebooks or one-off scripts.
+
+Dependencies:
+- plan:002_gate1
+- feature:elo_v1
+- round_assignment:seed_pair_lookup
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Added `src/mmlm2026/features/phase_b.py` with season-level builders for adjusted efficiency, strength of schedule, recent form, and Massey consensus features.
+- Added `tests/test_phase_b_features.py`; `uv run pytest`, `uv run ruff check .`, and `uv run mypy src` passed locally after the Phase B implementation.
+- Gate 1 feature infrastructure now covers the Phase B feature families called for in PLAN-002, so the next work can move to primary-model runs instead of additional baseline plumbing.
+
+Re-test if:
+- The pre-tournament cutoff policy changes away from `DayNum < 134` / `RankingDayNum <= 133`.
+- Phase B feature definitions change materially before ARCH-05 and ARCH-06.
+- A selected model family needs matchup-level transformations beyond the current season-level builders.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
 ## 2026-03-09 — Infrastructure complete; no model experiments run yet
 
 Status: Completed
@@ -84,6 +115,188 @@ Re-test if:
 - Kaggle submission schema changes.
 - The project changes clipping bounds away from `[0.025, 0.975]`.
 - Sample-submission handling becomes league- or stage-specific.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — VAL-01: 2025 holdout sanity check (men)
+
+Status: Completed
+
+Hypothesis:
+- The current best men’s baseline (`ARCH-01`) generalizes from the 2023–2024 validation window to the unseen 2025 tournament without a material degradation.
+
+Dependencies:
+- plan:002_gate1
+- arch-01
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: val-01-2025-holdout-men
+- Run ID: c3733a50efc7491586f3060e0dc317b0
+
+Result:
+- 2025 holdout produced `flat_brier = 0.151642` and `log_loss = 0.469892`.
+- Mean round-group diagnostics: `r1_brier = 0.135707`, `r2plus_brier = 0.168092`.
+- This is better than the earlier 2023–2024 validation average from `ARCH-01` (`flat_brier = 0.197508`), so there is no evidence of overfitting from the current men’s baseline.
+
+Re-test if:
+- A new men’s baseline overtakes `ARCH-01`.
+- The validation window or leakage policy changes.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — VAL-01: 2025 holdout sanity check (women)
+
+Status: Completed
+
+Hypothesis:
+- The current best women’s baseline (`ARCH-04`) generalizes from the 2023–2024 validation window to the unseen 2025 tournament without a material degradation.
+
+Dependencies:
+- plan:002_gate1
+- arch-04
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: val-01-2025-holdout-women
+- Run ID: 84f848e9634340f1adf0233d36ded46f
+
+Result:
+- 2025 holdout produced `flat_brier = 0.113286` and `log_loss = 0.361987`.
+- Mean round-group diagnostics: `r1_brier = 0.087981`, `r2plus_brier = 0.139406`.
+- This is better than the earlier 2023–2024 validation average from `ARCH-04` (`flat_brier = 0.137357`), so there is no evidence of overfitting from the current women’s baseline.
+
+Re-test if:
+- A new women’s baseline overtakes `ARCH-04`.
+- The validation window or leakage policy changes.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — ARCH-03: Elo + seed logistic baseline (men)
+
+Status: Completed
+
+Hypothesis:
+- End-of-regular-season Elo adds signal beyond seed difference for the men’s tournament baseline.
+
+Dependencies:
+- plan:002_gate1
+- feature:seed_diff_v1
+- feature:elo_v1
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: arch-03-elo-seed-men
+- Run ID: ed65e8bcc7e04961a97bbccd4e868c71
+
+Result:
+- Leave-seasons-out validation on 2023 and 2024 produced overall `flat_brier = 0.197613` and `log_loss = 0.580609`.
+- Mean round-group diagnostics: `r1_brier = 0.185721`, `r2plus_brier = 0.209889`.
+- Relative to `ARCH-01` (`flat_brier = 0.197508`), Elo did not improve the men’s baseline on this validation window.
+
+Re-test if:
+- Elo hyperparameters (`day_cutoff`, `k_factor`, `home_advantage`) change.
+- Men’s baseline feature set expands beyond `seed_diff` and `elo_diff`.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — ARCH-04: Elo + seed logistic baseline (women)
+
+Status: Completed
+
+Hypothesis:
+- End-of-regular-season Elo adds signal beyond seed difference for the women’s tournament baseline.
+
+Dependencies:
+- plan:002_gate1
+- feature:seed_diff_v1
+- feature:elo_v1
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: arch-04-elo-seed-women
+- Run ID: c4929b684eea490faaca353aefbb5e46
+
+Result:
+- Leave-seasons-out validation on 2023 and 2024 produced overall `flat_brier = 0.137357` and `log_loss = 0.426218`.
+- Mean round-group diagnostics: `r1_brier = 0.103508`, `r2plus_brier = 0.172297`.
+- Relative to `ARCH-02` (`flat_brier = 0.140573`), Elo improved the women’s baseline on this validation window.
+
+Re-test if:
+- Elo hyperparameters (`day_cutoff`, `k_factor`, `home_advantage`) change.
+- Women’s baseline feature set expands beyond `seed_diff` and `elo_diff`.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — ARCH-01: seed-diff logistic baseline (men)
+
+Status: Completed
+
+Hypothesis:
+- Seed difference alone is a strong men’s tournament baseline and should beat the naive 0.5 floor with reasonable Round of 64 calibration.
+
+Dependencies:
+- plan:002_gate1
+- feature:seed_diff_v1
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: arch-01-seed-diff-men
+- Run ID: c0ef5d21cbf44cc185edc4ec7b920b43
+
+Result:
+- Leave-seasons-out validation on 2023 and 2024 produced overall `flat_brier = 0.197508` and `log_loss = 0.579247`.
+- Mean round-group diagnostics: `r1_brier = 0.182200`, `r2plus_brier = 0.213310`.
+- Per-season flat Brier: 2023 `0.204203`, 2024 `0.190814`.
+
+Re-test if:
+- Seed parsing or `seed_diff` sign convention changes.
+- Round-group routing or bracket diagnostics change materially.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
+## 2026-03-10 — ARCH-02: seed-diff logistic baseline (women)
+
+Status: Completed
+
+Hypothesis:
+- Seed difference alone is an even stronger women’s tournament baseline than men’s and should provide a solid floor for later feature additions.
+
+Dependencies:
+- plan:002_gate1
+- feature:seed_diff_v1
+- validation:leave_season_out_v1
+
+MLflow:
+- Run name: arch-02-seed-diff-women
+- Run ID: 809fa43caaf24469b2a2b68cf3afbfc9
+
+Result:
+- Leave-seasons-out validation on 2023 and 2024 produced overall `flat_brier = 0.140573` and `log_loss = 0.432945`.
+- Mean round-group diagnostics: `r1_brier = 0.104118`, `r2plus_brier = 0.178204`.
+- Per-season flat Brier: 2023 `0.169764`, 2024 `0.111382`.
+
+Re-test if:
+- Seed parsing or `seed_diff` sign convention changes.
+- Women’s tournament seed dynamics shift materially in future seasons.
 
 Related:
 - docs/roadmaps/PLAN-002-competition-attack-plan.md

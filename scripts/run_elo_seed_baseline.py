@@ -12,15 +12,16 @@ from mmlm2026.evaluation.validation import (
     save_validation_artifacts,
     validate_season_holdouts,
 )
-from mmlm2026.features.baseline import (
-    build_seed_diff_matchup_features_from_seeds,
-    build_seed_diff_tourney_features,
+from mmlm2026.features.elo import (
+    build_elo_seed_matchup_features,
+    build_elo_seed_tourney_features,
+    compute_end_of_regular_season_elo,
 )
 from mmlm2026.utils.mlflow_tracking import start_tracked_run
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the seed-diff tournament baseline.")
+    parser = argparse.ArgumentParser(description="Run the seed-plus-Elo tournament baseline.")
     parser.add_argument("--league", choices=["M", "W"], required=True)
     parser.add_argument(
         "--data-dir",
@@ -32,6 +33,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-features", action="store_true")
     parser.add_argument("--log-mlflow", action="store_true")
     parser.add_argument("--run-name", default=None)
+    parser.add_argument("--day-cutoff", type=int, default=134)
+    parser.add_argument("--k-factor", type=float, default=20.0)
+    parser.add_argument("--home-advantage", type=float, default=100.0)
     return parser
 
 
@@ -39,21 +43,34 @@ def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
 
-    results_path, seeds_path, slots_path = _league_paths(args.data_dir, args.league)
-    results = pd.read_csv(results_path)
+    (
+        regular_season_path,
+        tourney_results_path,
+        seeds_path,
+        slots_path,
+    ) = _league_paths(args.data_dir, args.league)
+    regular_season = pd.read_csv(regular_season_path)
+    results = pd.read_csv(tourney_results_path)
     seeds = pd.read_csv(seeds_path)
     slots = pd.read_csv(slots_path)
 
-    feature_table = build_seed_diff_tourney_features(results, seeds, league=args.league)
+    elo_ratings = compute_end_of_regular_season_elo(
+        regular_season,
+        day_cutoff=args.day_cutoff,
+        k_factor=args.k_factor,
+        home_advantage=args.home_advantage,
+    )
+    feature_table = build_elo_seed_tourney_features(results, seeds, elo_ratings, league=args.league)
 
-    output_dir = args.output_dir / args.league.lower()
+    output_dir = args.output_dir / f"{args.league.lower()}_elo"
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.save_features:
-        feature_table.to_parquet(output_dir / "seed_diff_features.parquet", index=False)
+        feature_table.to_parquet(output_dir / "elo_seed_features.parquet", index=False)
+        elo_ratings.to_parquet(output_dir / "elo_ratings.parquet", index=False)
 
     validation = validate_season_holdouts(
         feature_table,
-        feature_cols=["seed_diff"],
+        feature_cols=["seed_diff", "elo_diff"],
         holdout_seasons=args.holdout_seasons,
         train_min_games=50,
     )
@@ -64,14 +81,15 @@ def main() -> int:
 
     latest_holdout = max(args.holdout_seasons)
     train_frame = feature_table.loc[feature_table["Season"] < latest_holdout].copy()
-    infer_frame = build_seed_diff_matchup_features_from_seeds(
+    infer_frame = build_elo_seed_matchup_features(
         seeds,
+        elo_ratings,
         season=latest_holdout,
         league=args.league,
     )
-    model = build_logistic_pipeline(["seed_diff"])
-    model.fit(train_frame[["seed_diff"]], train_frame["outcome"].astype(int))
-    infer_frame["Pred"] = model.predict_proba(infer_frame[["seed_diff"]])[:, 1]
+    model = build_logistic_pipeline(["seed_diff", "elo_diff"])
+    model.fit(train_frame[["seed_diff", "elo_diff"]], train_frame["outcome"].astype(int))
+    infer_frame["Pred"] = model.predict_proba(infer_frame[["seed_diff", "elo_diff"]])[:, 1]
     infer_frame["ID"] = [
         f"{latest_holdout}_{low}_{high}"
         for low, high in zip(
@@ -80,6 +98,7 @@ def main() -> int:
             strict=False,
         )
     ]
+
     bracket = compute_bracket_diagnostics(
         slots,
         seeds,
@@ -91,12 +110,7 @@ def main() -> int:
     bracket_artifacts = save_bracket_artifacts(bracket, output_dir=output_dir / "bracket")
 
     if args.log_mlflow:
-        _log_mlflow_run(
-            args,
-            validation,
-            validation_artifacts,
-            bracket_artifacts,
-        )
+        _log_mlflow_run(args, validation, validation_artifacts, bracket_artifacts)
 
     print(validation.per_season_metrics.to_string(index=False))
     print(
@@ -108,12 +122,13 @@ def main() -> int:
     return 0
 
 
-def _league_paths(data_dir: Path, league: str) -> tuple[Path, Path, Path]:
+def _league_paths(data_dir: Path, league: str) -> tuple[Path, Path, Path, Path]:
     prefix = "M" if league == "M" else "W"
-    results_path = data_dir / f"{prefix}NCAATourneyCompactResults.csv"
+    regular_season_path = data_dir / f"{prefix}RegularSeasonCompactResults.csv"
+    tourney_results_path = data_dir / f"{prefix}NCAATourneyCompactResults.csv"
     seeds_path = data_dir / f"{prefix}NCAATourneySeeds.csv"
     slots_path = data_dir / f"{prefix}NCAATourneySlots.csv"
-    return results_path, seeds_path, slots_path
+    return regular_season_path, tourney_results_path, seeds_path, slots_path
 
 
 def _log_mlflow_run(
@@ -122,14 +137,14 @@ def _log_mlflow_run(
     validation_artifacts,
     bracket_artifacts,
 ) -> None:
-    run_name = args.run_name or f"seed-diff-baseline-{args.league.lower()}"
+    run_name = args.run_name or f"elo-seed-baseline-{args.league.lower()}"
     tags = {
-        "hypothesis": "seed difference alone is a strong tournament baseline",
+        "hypothesis": "Elo adds signal beyond seed difference for tournament predictions",
         "model_family": "logistic_regression",
         "league": "men" if args.league == "M" else "women",
         "season_window": f"pre-{min(args.holdout_seasons)}",
-        "depends_on": "feature:seed_diff_v1",
-        "retest_if": "tournament seed assignment rules change",
+        "depends_on": "feature:seed_diff_v1,feature:elo_v1",
+        "retest_if": "regular season cutoff or Elo hyperparameters change",
         "leakage_audit": "passed",
     }
     with start_tracked_run(run_name, tags=tags):
@@ -137,7 +152,10 @@ def _log_mlflow_run(
             {
                 "league": args.league,
                 "holdout_seasons": ",".join(str(season) for season in args.holdout_seasons),
-                "feature": "seed_diff",
+                "features": "seed_diff,elo_diff",
+                "elo_day_cutoff": args.day_cutoff,
+                "elo_k_factor": args.k_factor,
+                "elo_home_advantage": args.home_advantage,
             }
         )
         mlflow.log_metrics(

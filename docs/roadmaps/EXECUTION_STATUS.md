@@ -14,14 +14,14 @@ Note: Evaluation policy was revised on 2026-03-10. Flat Brier on held-out played
 | Gate | Status | Target Date |
 |---|---|---|
 | Gate 0 — Infrastructure Ready | Complete | 2026-03-11 |
-| Gate 1 — Baselines Established | Not started | 2026-03-13 |
+| Gate 1 — Baselines Established | Complete | 2026-03-13 |
 | Gate 2 — Primary Models Ready | Not started | 2026-03-16 |
 | Gate 3 — Ensemble and Final Submission | Not started | 2026-03-18 |
 | Hard Deadline | Not started | 2026-03-19 16:00 UTC |
 
 **ADR 0004 resolved (2026-03-10):** Option A — separate models per league. Round-group separation (R1 vs R2+) is an open experiment axis (ARCH-RG-01 through ARCH-RG-06).
 
-Progress note (2026-03-10): `scripts/validate_submission.py`, `scripts/validate_cv.py`, `scripts/bracket_dp.py`, and `scripts/run_seed_diff_baseline.py` are implemented with reusable `src/` helpers and test coverage. Gate 0 infrastructure is now in place; next work is executing and logging baseline runs.
+Progress note (2026-03-10): Gate 0 infrastructure is complete. Gate 1 is also complete: ARCH-01 through ARCH-04 are executed and logged in MLflow (`c0ef5d21cbf44cc185edc4ec7b920b43`, `809fa43caaf24469b2a2b68cf3afbfc9`, `ed65e8bcc7e04961a97bbccd4e868c71`, `c4929b684eea490faaca353aefbb5e46`), the 2025 holdout sanity check is complete (`c3733a50efc7491586f3060e0dc317b0`, `84f848e9634340f1adf0233d36ded46f`), and Feature Phase B builders are implemented and verified. The next execution target is Gate 2 primary-model work.
 
 ---
 

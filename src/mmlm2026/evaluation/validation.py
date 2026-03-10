@@ -96,7 +96,7 @@ def validate_season_holdouts(
                 f"minimum required is {train_min_games}."
             )
 
-        model = _build_logistic_pipeline(feature_cols)
+        model = build_logistic_pipeline(feature_cols)
         model.fit(train[feature_cols], train[outcome_col].astype(int))
 
         preds = model.predict_proba(valid[feature_cols])[:, 1]
@@ -203,7 +203,8 @@ def save_validation_artifacts(
     )
 
 
-def _build_logistic_pipeline(feature_cols: list[str]) -> Pipeline:
+def build_logistic_pipeline(feature_cols: list[str]) -> Pipeline:
+    """Build the standard logistic pipeline used by validation and baselines."""
     preprocessor = ColumnTransformer(
         transformers=[
             (

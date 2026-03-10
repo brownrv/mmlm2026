@@ -77,3 +77,46 @@ def build_seed_diff_tourney_features(
         .sort_values(["Season", "LowTeamID", "HighTeamID"])
         .reset_index(drop=True)
     )
+
+
+def build_seed_diff_matchup_features_from_seeds(
+    seeds: pd.DataFrame,
+    *,
+    season: int,
+    league: str,
+) -> pd.DataFrame:
+    """Build all seeded team-pair rows for a season in submission orientation."""
+    required_seeds = {"Season", "Seed", "TeamID"}
+    missing_seeds = required_seeds.difference(seeds.columns)
+    if missing_seeds:
+        raise ValueError(f"Seed table missing required columns: {sorted(missing_seeds)}")
+
+    season_seeds = seeds.loc[seeds["Season"] == season].copy()
+    if season_seeds.empty:
+        raise ValueError(f"No seed rows found for season {season}.")
+
+    season_seeds["seed_value"] = season_seeds["Seed"].astype(str).str[1:3].astype(int)
+    season_seeds = season_seeds.sort_values("TeamID").reset_index(drop=True)
+
+    feature_rows: list[dict[str, int | str | None]] = []
+    total_rows = len(season_seeds)
+    for idx in range(total_rows):
+        low_row = season_seeds.iloc[idx]
+        for high_idx in range(idx + 1, total_rows):
+            high_row = season_seeds.iloc[high_idx]
+            feature_rows.append(
+                {
+                    "Season": season,
+                    "league": league,
+                    "LowTeamID": int(low_row["TeamID"]),
+                    "HighTeamID": int(high_row["TeamID"]),
+                    "low_seed": int(low_row["seed_value"]),
+                    "high_seed": int(high_row["seed_value"]),
+                    "seed_diff": int(high_row["seed_value"]) - int(low_row["seed_value"]),
+                    "round_group": None,
+                    "Round": None,
+                    "outcome": None,
+                }
+            )
+
+    return pd.DataFrame(feature_rows)

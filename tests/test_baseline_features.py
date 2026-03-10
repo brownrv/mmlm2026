@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from mmlm2026.features.baseline import build_seed_diff_tourney_features
+from mmlm2026.features.baseline import (
+    build_seed_diff_matchup_features_from_seeds,
+    build_seed_diff_tourney_features,
+)
 
 
 def test_build_seed_diff_tourney_features_orients_rows_to_low_team() -> None:
@@ -28,3 +31,22 @@ def test_build_seed_diff_tourney_features_orients_rows_to_low_team() -> None:
     assert feature_table["outcome"].tolist() == [0, 0]
     assert feature_table["seed_diff"].tolist() == [15, 7]
     assert set(feature_table["round_group"]) == {"R1"}
+
+
+def test_build_seed_diff_matchup_features_from_seeds_generates_all_pairs() -> None:
+    seeds = pd.DataFrame(
+        {
+            "Season": [2025, 2025, 2025],
+            "Seed": ["W01", "W08", "W16"],
+            "TeamID": [10, 20, 30],
+        }
+    )
+
+    matchup_table = build_seed_diff_matchup_features_from_seeds(seeds, season=2025, league="M")
+
+    assert matchup_table[["LowTeamID", "HighTeamID"]].values.tolist() == [
+        [10, 20],
+        [10, 30],
+        [20, 30],
+    ]
+    assert matchup_table["seed_diff"].tolist() == [7, 15, 8]
