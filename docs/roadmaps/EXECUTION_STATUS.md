@@ -2,14 +2,40 @@
 
 Last updated: 2026-03-10
 
+---
+
+## PLAN-002: Competition Attack Plan
+
+Status: Active
+Source plan: `docs/roadmaps/PLAN-002-competition-attack-plan.md`
+
+Note: Evaluation policy was revised on 2026-03-10. Flat Brier on held-out played tournament games is now the primary selection metric; bracket-aware and `R1`/`R2+` analyses are supporting diagnostics.
+
+| Gate | Status | Target Date |
+|---|---|---|
+| Gate 0 — Infrastructure Ready | Not started | 2026-03-11 |
+| Gate 1 — Baselines Established | Not started | 2026-03-13 |
+| Gate 2 — Primary Models Ready | Not started | 2026-03-16 |
+| Gate 3 — Ensemble and Final Submission | Not started | 2026-03-18 |
+| Hard Deadline | Not started | 2026-03-19 16:00 UTC |
+
+**ADR 0004 resolved (2026-03-10):** Option A — separate models per league. Round-group separation (R1 vs R2+) is an open experiment axis (ARCH-RG-01 through ARCH-RG-06).
+
+---
+
 > **Note:** `docs/roadmaps/SETUP_PLAN.md` has been archived to
 > `docs/roadmaps/archive/SETUP_PLAN.md` (2026-03-09). All 12 phases were complete.
+>
+> **Note:** `docs/roadmaps/PLAN-001-repo-improvements.md` was completed and archived to
+> `docs/roadmaps/archive/PLAN-001-repo-improvements.md` on 2026-03-10.
 
 ---
 
 ## PLAN-001: Repository Improvement and Agent UX Hardening
 
-Source plan: `docs/roadmaps/PLAN-001-repo-improvements.md`
+Status: Complete
+
+Source plan: `docs/roadmaps/archive/PLAN-001-repo-improvements.md` (archived 2026-03-10)
 
 ### Phase 1 — Critical Blockers
 
@@ -29,7 +55,7 @@ Source plan: `docs/roadmaps/PLAN-001-repo-improvements.md`
 | P2-4: Mark completed follow-up actions in ADR 0001 | Complete | Both follow-up actions are checked with implementation references. |
 | P2-5: Add audience headers to `CLAUDE.md` and `AGENTS.md` | Complete | Audience HTML comments added as first line in both files. |
 | P2-6: Add initial experiment log stub entry | Complete | Added dated infrastructure milestone entry to `docs/experiments/experiment-log.md`. |
-| P2-7: Create M+W modeling strategy ADR skeleton | Complete (awaiting human decision) | Created `docs/decisions/0004-men-women-tournament-modeling-strategy.md` with `[HUMAN DECISION REQUIRED]` decision placeholder. |
+| P2-7: Create M+W modeling strategy ADR skeleton | Complete | ADR 0004 is now accepted: Option A — separate models per league, merged at submission time. |
 
 ### Phase 3 — Agent UX Improvements
 
