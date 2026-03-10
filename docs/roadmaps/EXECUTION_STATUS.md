@@ -13,13 +13,15 @@ Note: Evaluation policy was revised on 2026-03-10. Flat Brier on held-out played
 
 | Gate | Status | Target Date |
 |---|---|---|
-| Gate 0 — Infrastructure Ready | Not started | 2026-03-11 |
+| Gate 0 — Infrastructure Ready | Complete | 2026-03-11 |
 | Gate 1 — Baselines Established | Not started | 2026-03-13 |
 | Gate 2 — Primary Models Ready | Not started | 2026-03-16 |
 | Gate 3 — Ensemble and Final Submission | Not started | 2026-03-18 |
 | Hard Deadline | Not started | 2026-03-19 16:00 UTC |
 
 **ADR 0004 resolved (2026-03-10):** Option A — separate models per league. Round-group separation (R1 vs R2+) is an open experiment axis (ARCH-RG-01 through ARCH-RG-06).
+
+Progress note (2026-03-10): `scripts/validate_submission.py`, `scripts/validate_cv.py`, `scripts/bracket_dp.py`, and `scripts/run_seed_diff_baseline.py` are implemented with reusable `src/` helpers and test coverage. Gate 0 infrastructure is now in place; next work is executing and logging baseline runs.
 
 ---
 
