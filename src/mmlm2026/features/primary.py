@@ -383,6 +383,77 @@ def build_phase_ab_matchup_features(
     return _attach_team_feature_diffs(base, team_features)
 
 
+def build_phase_ab_submission_features(
+    matchups: pd.DataFrame,
+    seeds: pd.DataFrame,
+    team_features: pd.DataFrame,
+    *,
+    league: str,
+    round_lookup_path: str | Path | None = None,
+) -> pd.DataFrame:
+    """Build Phase A+B features for arbitrary submission rows."""
+    required_matchups = {"Season", "LowTeamID", "HighTeamID"}
+    missing_matchups = required_matchups.difference(matchups.columns)
+    if missing_matchups:
+        raise ValueError(f"Matchup frame missing required columns: {sorted(missing_matchups)}")
+
+    required_seeds = {"Season", "Seed", "TeamID"}
+    missing_seeds = required_seeds.difference(seeds.columns)
+    if missing_seeds:
+        raise ValueError(f"Seed table missing required columns: {sorted(missing_seeds)}")
+
+    base = matchups.copy()
+    base["league"] = league
+    base["outcome"] = None
+
+    seed_values = seeds[["Season", "TeamID", "Seed"]].copy()
+    seed_values["seed_value"] = seed_values["Seed"].astype(str).str[1:3].astype(int)
+    base = base.merge(
+        seed_values.rename(
+            columns={
+                "TeamID": "LowTeamID",
+                "Seed": "low_seed_label",
+                "seed_value": "low_seed",
+            }
+        ),
+        on=["Season", "LowTeamID"],
+        how="left",
+        validate="many_to_one",
+    ).merge(
+        seed_values.rename(
+            columns={
+                "TeamID": "HighTeamID",
+                "Seed": "high_seed_label",
+                "seed_value": "high_seed",
+            }
+        ),
+        on=["Season", "HighTeamID"],
+        how="left",
+        validate="many_to_one",
+    )
+    base["seed_diff"] = base["high_seed"] - base["low_seed"]
+    rounds = _rounds_from_seed_pairs(
+        base,
+        low_seed_col="low_seed_label",
+        high_seed_col="high_seed_label",
+        round_lookup_path=round_lookup_path,
+    )
+    base["Round"] = rounds
+    base["round_group"] = rounds.map(
+        lambda value: (
+            None
+            if pd.isna(value)
+            else "R0"
+            if int(value) == 0
+            else "R1"
+            if int(value) == 1
+            else "R2+"
+        )
+    )
+    base = base.drop(columns=["low_seed_label", "high_seed_label"])
+    return _attach_team_feature_diffs(base, team_features)
+
+
 def _build_seed_oriented_games(
     tourney_results: pd.DataFrame,
     seeds: pd.DataFrame,
@@ -588,3 +659,46 @@ def _attach_team_feature_diffs(
         )
 
     return merged.sort_values(["Season", "LowTeamID", "HighTeamID"]).reset_index(drop=True)
+
+
+def _rounds_from_seed_pairs(
+    frame: pd.DataFrame,
+    *,
+    low_seed_col: str,
+    high_seed_col: str,
+    round_lookup_path: str | Path | None = None,
+) -> pd.Series:
+    lookup_inputs = frame[["Season", low_seed_col, high_seed_col]].copy()
+    required = lookup_inputs[low_seed_col].notna() & lookup_inputs[high_seed_col].notna()
+    round_values = pd.Series([pd.NA] * len(frame), index=frame.index, dtype="Int64")
+    if not required.any():
+        return round_values
+
+    synthetic = pd.DataFrame(
+        {
+            "Season": lookup_inputs.loc[required, "Season"].astype(int),
+            "WTeamID": range(1, int(required.sum()) + 1),
+            "LTeamID": range(10_001, 10_001 + int(required.sum())),
+        }
+    )
+    seeds = pd.DataFrame(
+        {
+            "Season": pd.concat(
+                [
+                    lookup_inputs.loc[required, "Season"].astype(int),
+                    lookup_inputs.loc[required, "Season"].astype(int),
+                ],
+                ignore_index=True,
+            ),
+            "TeamID": list(synthetic["WTeamID"].to_numpy()) + list(synthetic["LTeamID"].to_numpy()),
+            "Seed": list(lookup_inputs.loc[required, low_seed_col].astype(str).to_numpy())
+            + list(lookup_inputs.loc[required, high_seed_col].astype(str).to_numpy()),
+        }
+    )
+    rounds = assign_rounds_from_seeds(
+        synthetic,
+        seeds,
+        round_lookup_path=round_lookup_path,
+    )
+    round_values.loc[required] = rounds["Round"].astype("Int64").to_numpy()
+    return round_values

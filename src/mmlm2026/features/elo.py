@@ -238,6 +238,102 @@ def build_elo_seed_matchup_features(
     return pd.DataFrame(rows)
 
 
+def build_elo_seed_submission_features(
+    matchups: pd.DataFrame,
+    seeds: pd.DataFrame,
+    elo_ratings: pd.DataFrame,
+    *,
+    league: str,
+    round_lookup_path: str | Path | None = None,
+) -> pd.DataFrame:
+    """Build seed-plus-Elo features for arbitrary submission rows."""
+    required_matchups = {"Season", "LowTeamID", "HighTeamID"}
+    missing_matchups = required_matchups.difference(matchups.columns)
+    if missing_matchups:
+        raise ValueError(f"Matchup frame missing required columns: {sorted(missing_matchups)}")
+
+    required_seeds = {"Season", "Seed", "TeamID"}
+    missing_seeds = required_seeds.difference(seeds.columns)
+    if missing_seeds:
+        raise ValueError(f"Seed table missing required columns: {sorted(missing_seeds)}")
+
+    required_elo = {"Season", "TeamID", "elo"}
+    missing_elo = required_elo.difference(elo_ratings.columns)
+    if missing_elo:
+        raise ValueError(f"Elo table missing required columns: {sorted(missing_elo)}")
+
+    enriched = matchups.copy()
+    enriched["league"] = league
+    enriched["outcome"] = None
+
+    seed_values = seeds[["Season", "TeamID", "Seed"]].copy()
+    seed_values["seed_value"] = seed_values["Seed"].astype(str).str[1:3].astype(int)
+    enriched = (
+        enriched.merge(
+            seed_values.rename(
+                columns={
+                    "TeamID": "LowTeamID",
+                    "Seed": "low_seed_label",
+                    "seed_value": "low_seed",
+                }
+            ),
+            on=["Season", "LowTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+        .merge(
+            seed_values.rename(
+                columns={
+                    "TeamID": "HighTeamID",
+                    "Seed": "high_seed_label",
+                    "seed_value": "high_seed",
+                }
+            ),
+            on=["Season", "HighTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+        .merge(
+            elo_ratings.rename(columns={"TeamID": "LowTeamID", "elo": "low_elo"}),
+            on=["Season", "LowTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+        .merge(
+            elo_ratings.rename(columns={"TeamID": "HighTeamID", "elo": "high_elo"}),
+            on=["Season", "HighTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+    )
+
+    enriched["seed_diff"] = enriched["high_seed"] - enriched["low_seed"]
+    enriched["elo_diff"] = enriched["low_elo"] - enriched["high_elo"]
+    rounds = _rounds_from_seed_pairs(
+        enriched,
+        low_seed_col="low_seed_label",
+        high_seed_col="high_seed_label",
+        round_lookup_path=round_lookup_path,
+    )
+    enriched["Round"] = rounds
+    enriched["round_group"] = rounds.map(
+        lambda value: (
+            None
+            if pd.isna(value)
+            else "R0"
+            if int(value) == 0
+            else "R1"
+            if int(value) == 1
+            else "R2+"
+        )
+    )
+    return (
+        enriched.drop(columns=["low_seed_label", "high_seed_label"])
+        .sort_values(["Season", "LowTeamID", "HighTeamID"])
+        .reset_index(drop=True)
+    )
+
+
 def _build_seed_features_core(
     tourney_results: pd.DataFrame,
     seeds: pd.DataFrame,
@@ -330,3 +426,46 @@ def _apply_elo_update(
     delta = weight * k_factor * mov_multiplier * (1.0 - expected_winner)
     ratings[winner] = winner_rating + delta
     ratings[loser] = max(loser_rating - delta, 1.0)
+
+
+def _rounds_from_seed_pairs(
+    frame: pd.DataFrame,
+    *,
+    low_seed_col: str,
+    high_seed_col: str,
+    round_lookup_path: str | Path | None = None,
+) -> pd.Series:
+    lookup_inputs = frame[["Season", low_seed_col, high_seed_col]].copy()
+    required = lookup_inputs[low_seed_col].notna() & lookup_inputs[high_seed_col].notna()
+    round_values = pd.Series([pd.NA] * len(frame), index=frame.index, dtype="Int64")
+    if not required.any():
+        return round_values
+
+    synthetic = pd.DataFrame(
+        {
+            "Season": lookup_inputs.loc[required, "Season"].astype(int),
+            "WTeamID": range(1, int(required.sum()) + 1),
+            "LTeamID": range(10_001, 10_001 + int(required.sum())),
+        }
+    )
+    seeds = pd.DataFrame(
+        {
+            "Season": pd.concat(
+                [
+                    lookup_inputs.loc[required, "Season"].astype(int),
+                    lookup_inputs.loc[required, "Season"].astype(int),
+                ],
+                ignore_index=True,
+            ),
+            "TeamID": list(synthetic["WTeamID"].to_numpy()) + list(synthetic["LTeamID"].to_numpy()),
+            "Seed": list(lookup_inputs.loc[required, low_seed_col].astype(str).to_numpy())
+            + list(lookup_inputs.loc[required, high_seed_col].astype(str).to_numpy()),
+        }
+    )
+    rounds = assign_rounds_from_seeds(
+        synthetic,
+        seeds,
+        round_lookup_path=round_lookup_path,
+    )
+    round_values.loc[required] = rounds["Round"].astype("Int64").to_numpy()
+    return round_values

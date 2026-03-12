@@ -29,6 +29,38 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-12 — Gate 3: historical frozen-submission dry run
+
+Status: Completed
+
+Hypothesis:
+- The frozen men and women models can be assembled into one validated Kaggle-format submission without changing any modeling assumptions at Stage 2 time.
+
+Dependencies:
+- plan:002_gate3
+- arch-04b
+- val-05
+- submission_validation:v1
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Added a combined frozen-submission builder at [scripts/build_frozen_submission.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/build_frozen_submission.py) plus reusable submission-ID helpers in [src/mmlm2026/submission/frozen.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/submission/frozen.py).
+- A historical 2025 combined sample with `4556` rows was generated and the new builder produced a fully validated submission at [2025_gate3-dryrun-2025_submission.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/submissions/2025_gate3-dryrun-2025_submission.csv), with bracket artifacts saved under [2025_gate3-dryrun-2025_artifacts](/c:/Users/brown/Documents/GitHub/mmlm2026/data/submissions/2025_gate3-dryrun-2025_artifacts).
+- The live 2026 Stage 2 sample cannot yet be scored end to end from the current raw snapshot because 2026 regular-season inputs are not present locally. The remaining Gate 3 work is therefore operational: rerun the frozen builder once the 2026 data snapshot lands.
+
+Re-test if:
+- 2026 regular-season and seed data are refreshed locally.
+- The frozen men or women leader changes.
+- Kaggle changes the Stage 2 sample-submission schema or TeamID universe.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
 ## 2026-03-12 — VAL-05: replication-vs-generalization Elo parameter comparison
 
 Status: Completed
