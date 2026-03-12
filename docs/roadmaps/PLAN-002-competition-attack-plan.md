@@ -132,6 +132,7 @@ Features must be registered before fitting. For each feature, record:
 | Point differential (avg margin) | + larger margin wins | None | Often > W% alone |
 | Tempo (possessions per 40 min proxy) | Interaction | None | Matchup interaction |
 | Efficiency (offensive/defensive rating) | + better efficiency | None | From detailed results |
+| SOS-adjusted net efficiency | + stronger adjusted team wins | None | `net_eff = off_eff - def_eff`; season-normalize `net_eff` and `sos`, then sum into a combined strength index |
 | Massey ordinal consensus rank | + better rank | None | Men only |
 | Seed round expectation (historical seed win rates) | + favored seed | None | Round-specific |
 | Coach experience (tourney appearances) | + experienced coach | None | Men only |
@@ -251,6 +252,7 @@ Phase B — Enhanced Strength
   B2. Strength of schedule (opponent avg Elo)
   B3. Recent form (last 10 games W%)
   B4. Massey ordinal consensus (men only; median rank across systems)
+  B5. SOS-adjusted net efficiency (season-normalized net_eff + sos)
 
 Phase C — Matchup Features
   C1. Elo difference (per matchup pair)
@@ -347,7 +349,29 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - Independent tuning and calibration per league; merge via CSV concatenation at submission assembly.
 - All experiment IDs carry an explicit `league` tag (`M` or `W`).
 
-### 4.3 Round-Group Modeling Strategy
+### 4.3 `adj_quality_gap_v10` Challenger Track
+
+`docs/adj_quality_gap_v10.md` describes a strong reference implementation that materially overlaps with this roadmap. Treat it as a **benchmark challenger workstream inside PLAN-002**, not as a replacement for this plan's evaluation policy.
+
+**Comparable benchmark rule:** use the documented **LOSO played-game Brier** results as the standard to beat. Do **not** use its Stage 1 all-matchups score as the primary offline benchmark, because that is a different evaluation universe from this plan's held-out played-game flat Brier.
+
+**What overlaps with PLAN-002:**
+- separate men/women models
+- Elo as a primary strength signal
+- SOS-adjusted efficiency as a core quality idea
+- blending multiple probability sources
+- leave-future-out historical evaluation
+
+**What the challenger adds beyond current repo implementation:**
+- KenPom-style iterative SOS adjustment for `AdjO` / `AdjD`
+- women-only home-court correction before SOS iteration
+- richer situational feature set, especially for men
+- tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
+- men-specific margin regression, probability conversion, and dynamic temperature scaling
+
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the frozen leaders (`ARCH-01` men, `ARCH-04` women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+
+### 4.4 Round-Group Modeling Strategy
 
 **Open question (to be resolved by experiment):** Does splitting training and/or prediction by round group improve held-out flat Brier, especially on guaranteed `R1` games, over a single unified model?
 
@@ -361,7 +385,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 
 **Experiment gate:** Do not split by round group unless ARCH-RG experiments (§9.1) show flat-Brier improvement on `R1` without meaningful degradation on `R2+` in 2023–2024 CV. The unified per-league model is the default.
 
-### 4.4 Architecture Experiment Gates
+### 4.5 Architecture Experiment Gates
 
 Before advancing a model family to ensemble candidacy:
 1. Brier score < seed-diff logistic baseline on 2023–2024 CV
@@ -603,6 +627,22 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
 | Stage 2 submission | Post-Selection Sunday | Apply selected model to Stage 2 pairs; upload once |
 | Final selection | 2026-03-19 | Confirm submission is selected in Kaggle UI |
 
+### 8.2.1 Gate 3 Freeze
+
+**Frozen model choices entering Gate 3 (2026-03-12):**
+
+- Men: `ARCH-01` seed-diff logistic baseline
+  - MLflow run: `c0ef5d21cbf44cc185edc4ec7b920b43`
+  - 2023-2024 flat Brier: `0.197508`
+  - 2025 holdout run: `c3733a50efc7491586f3060e0dc317b0`
+
+- Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
+  - MLflow run: `ba0a02b8c8bc404089bdd2de7fe9a917`
+  - 2023-2024 flat Brier: `0.132193`
+  - 2025 holdout run: `f6eac553495949a5805c84fb4cdef757`
+
+**Gate 3 operating rule:** these are the submission-default models unless a later Gate 3 challenger beats them on the same held-out flat-Brier protocol. No model is promoted during Stage 2 inference preparation for subjective reasons, additional complexity, or leaderboard curiosity alone.
+
 ### 8.3 Submission Assembly Checklist
 
 Before each submission:
@@ -663,6 +703,11 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | FEAT-08 | Tempo interaction | tempo_diff, tempo_product | ARCH-07 | Fast-vs-slow matchups have different upset rates | P3 |
 | FEAT-09 | Historical seed-pair rate | seed_pair_historical_rate | ARCH-01 | Granular seed pair (not just diff) carries extra signal | P2 |
 | FEAT-10 | Conference strength | conf_elo_diff | ARCH-05 | Conference quality adjusts for schedule strength | P3 |
+| FEAT-11 | SOS-adjusted net efficiency | sos_adjusted_net_eff_diff | ARCH-03 / ARCH-04 challenger | Combined efficiency + schedule strength improves Brier over raw Elo baselines | P1 |
+| FEAT-12 | Iterative KenPom-style adjusted efficiency | adj_qg_diff | `adj_quality_gap_v10` challenger | Iterative opponent-adjusted efficiency beats the simpler SOS-adjusted net-efficiency proxy | P1 |
+| FEAT-13 | Women HCA-corrected adjusted efficiency | women_hca_adj_qg_diff | `adj_quality_gap_v10` challenger | Pre-SOS home-court correction improves women's adjusted quality signal | P1 |
+| FEAT-14 | Men situational box-score differentials | d_AstRate, d_FTR, d_TOVr, d_ConfTourneyWR, d_CloseWR1 | `adj_quality_gap_v10` challenger | Richer situational signals improve men's quality model | P2 |
+| FEAT-15 | Women close-game performance | d_CloseWR3 | `adj_quality_gap_v10` challenger | Women's 3-point close-game win rate adds signal beyond Elo and quality gap | P2 |
 
 ### 9.3 Combination and Validation Experiments
 
@@ -681,6 +726,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | VAL-02 | Calibration audit | Best current model | Reliability diagram | Output probabilities match empirical win rates | P0 (every model) |
 | VAL-03 | Bracket simulator diagnostics | Best current model | Deterministic bracket DP | Bracket structure does not expose unexpected calibration risk in high-likelihood buckets | P1 |
 | VAL-04 | Women's parity check | ARCH-06 vs ARCH-08 | CV by seed pair | Women's model appropriately reflects higher parity | P1 |
+| VAL-05 | `adj_quality_gap_v10` benchmark comparison | Best local challenger vs documented benchmark | LOSO played-game Brier | Local challenger approaches or exceeds the documented benchmark on the comparable metric | P1 |
 
 ---
 
@@ -709,6 +755,9 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 - [ ] Calibration audit (VAL-02) passed for each model candidate
 
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
+- [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
+- [ ] Men frozen leader: `ARCH-01`
+- [ ] Women frozen leader: `ARCH-04B`
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
 - [ ] Per-bucket and `R1/R2+` Brier decomposition reviewed; no unexpected degradation on guaranteed `R1` games

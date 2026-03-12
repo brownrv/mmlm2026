@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -16,48 +17,135 @@ def compute_end_of_regular_season_elo(
     home_advantage: float = 100.0,
 ) -> pd.DataFrame:
     """Compute end-of-regular-season Elo ratings by season and team."""
+    return compute_pre_tourney_elo_ratings(
+        regular_season_results,
+        day_cutoff=day_cutoff,
+        initial_rating=initial_rating,
+        k_factor=k_factor,
+        home_advantage=home_advantage,
+    )
+
+
+def compute_pre_tourney_elo_ratings(
+    regular_season_results: pd.DataFrame,
+    *,
+    tourney_results: pd.DataFrame | None = None,
+    day_cutoff: int = 134,
+    initial_rating: float = 1500.0,
+    k_factor: float = 20.0,
+    home_advantage: float = 100.0,
+    season_carryover: float = 1.0,
+    scale: float = 400.0,
+    mov_alpha: float = 0.0,
+    weight_regular: float = 1.0,
+    weight_tourney: float = 1.0,
+) -> pd.DataFrame:
+    """Compute pre-tournament Elo snapshots with optional carryover and MOV weighting."""
     required = {"Season", "DayNum", "WTeamID", "LTeamID", "WLoc"}
     missing = required.difference(regular_season_results.columns)
     if missing:
         raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
 
-    filtered = (
+    regular = (
         regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff]
         .sort_values(["Season", "DayNum"])
         .copy()
     )
-
-    ratings: dict[int, dict[int, float]] = {}
-    for _, row in filtered.iterrows():
-        season = int(row["Season"])
-        winner = int(row["WTeamID"])
-        loser = int(row["LTeamID"])
-        wloc = str(row["WLoc"])
-
-        season_ratings = ratings.setdefault(season, {})
-        winner_rating = season_ratings.setdefault(winner, initial_rating)
-        loser_rating = season_ratings.setdefault(loser, initial_rating)
-
-        if wloc == "H":
-            location_adjustment = home_advantage
-        elif wloc == "A":
-            location_adjustment = -home_advantage
-        else:
-            location_adjustment = 0.0
-
-        expected_winner = 1.0 / (
-            1.0 + 10 ** (((loser_rating) - (winner_rating + location_adjustment)) / 400.0)
-        )
-        delta = k_factor * (1.0 - expected_winner)
-        season_ratings[winner] = winner_rating + delta
-        season_ratings[loser] = loser_rating - delta
+    if tourney_results is not None:
+        required_tourney = {"Season", "DayNum", "WTeamID", "LTeamID", "WScore", "LScore"}
+        missing_tourney = required_tourney.difference(tourney_results.columns)
+        if missing_tourney:
+            raise ValueError(
+                f"Tournament results missing required columns: {sorted(missing_tourney)}"
+            )
+        tourney = tourney_results.sort_values(["Season", "DayNum"]).copy()
+        tourney["WLoc"] = "N"
+    else:
+        tourney = None
 
     rows: list[dict[str, float | int]] = []
-    for season, season_ratings in ratings.items():
+    previous_ratings: dict[int, float] = {}
+    seasons = sorted(int(season) for season in regular["Season"].unique())
+    for season in seasons:
+        regular_games = regular.loc[regular["Season"] == season].copy()
+        tourney_games = (
+            tourney.loc[tourney["Season"] == season].copy() if tourney is not None else None
+        )
+        season_teams = set(int(team) for team in regular_games["WTeamID"].tolist())
+        season_teams.update(int(team) for team in regular_games["LTeamID"].tolist())
+        if tourney_games is not None and not tourney_games.empty:
+            season_teams.update(int(team) for team in tourney_games["WTeamID"].tolist())
+            season_teams.update(int(team) for team in tourney_games["LTeamID"].tolist())
+
+        season_ratings = {
+            team: (
+                season_carryover * previous_ratings[team]
+                + (1.0 - season_carryover) * initial_rating
+            )
+            if team in previous_ratings
+            else initial_rating
+            for team in sorted(season_teams)
+        }
+
+        for _, row in regular_games.iterrows():
+            _apply_elo_update(
+                season_ratings,
+                row,
+                k_factor=k_factor,
+                home_advantage=home_advantage,
+                scale=scale,
+                mov_alpha=mov_alpha,
+                weight=weight_regular,
+            )
+
         for team_id, rating in season_ratings.items():
             rows.append({"Season": season, "TeamID": team_id, "elo": float(rating)})
 
+        if tourney_games is not None:
+            for _, row in tourney_games.iterrows():
+                _apply_elo_update(
+                    season_ratings,
+                    row,
+                    k_factor=k_factor,
+                    home_advantage=0.0,
+                    scale=scale,
+                    mov_alpha=mov_alpha,
+                    weight=weight_tourney,
+                )
+        previous_ratings = season_ratings
+
     return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
+
+
+def elo_probability_from_diff(elo_diff: pd.Series, *, scale: float = 400.0) -> pd.Series:
+    """Convert LowTeam-minus-HighTeam Elo differential into win probability."""
+    scaled = (-elo_diff.astype(float) / float(scale)) * math.log(10.0)
+    clipped = scaled.clip(lower=-700.0, upper=700.0)
+    return 1.0 / (1.0 + clipped.map(math.exp))
+
+
+def pregame_expected_winner_probability(
+    winner_rating: float,
+    loser_rating: float,
+    *,
+    winner_location: str,
+    scale: float,
+    home_advantage: float,
+) -> float:
+    """Return the pre-update, home-adjusted Elo win probability for the winner."""
+    if winner_location == "H":
+        location_adjustment = home_advantage
+    elif winner_location == "A":
+        location_adjustment = -home_advantage
+    else:
+        location_adjustment = 0.0
+
+    loser_rating = max(float(loser_rating), 1.0)
+    scaled = (
+        (loser_rating - (float(winner_rating) + location_adjustment)) / float(scale)
+    ) * math.log(10.0)
+    clipped = max(min(scaled, 700.0), -700.0)
+    return float(1.0 / (1.0 + math.exp(clipped)))
 
 
 def build_elo_seed_tourney_features(
@@ -209,3 +297,36 @@ def _build_seed_features_core(
     return (
         pd.DataFrame(rows).sort_values(["Season", "LowTeamID", "HighTeamID"]).reset_index(drop=True)
     )
+
+
+def _apply_elo_update(
+    ratings: dict[int, float],
+    row: pd.Series,
+    *,
+    k_factor: float,
+    home_advantage: float,
+    scale: float,
+    mov_alpha: float,
+    weight: float,
+) -> None:
+    winner = int(row["WTeamID"])
+    loser = int(row["LTeamID"])
+    wloc = str(row.get("WLoc", "N"))
+    winner_rating = ratings.setdefault(winner, 1500.0)
+    loser_rating = ratings.setdefault(loser, 1500.0)
+
+    expected_winner = pregame_expected_winner_probability(
+        winner_rating,
+        loser_rating,
+        winner_location=wloc,
+        scale=scale,
+        home_advantage=home_advantage,
+    )
+    mov_multiplier = 1.0
+    if mov_alpha > 0.0 and {"WScore", "LScore"}.issubset(row.index):
+        margin = max(0.0, float(row["WScore"]) - float(row["LScore"]))
+        mov_multiplier = 1.0 + margin / mov_alpha
+
+    delta = weight * k_factor * mov_multiplier * (1.0 - expected_winner)
+    ratings[winner] = winner_rating + delta
+    ratings[loser] = max(loser_rating - delta, 1.0)

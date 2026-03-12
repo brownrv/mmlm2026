@@ -6,9 +6,14 @@ import pandas as pd
 import pytest
 
 from mmlm2026.evaluation.validation import (
+    CalibrationAuditSummary,
     ValidationSummary,
+    apply_probability_calibrator,
+    build_logistic_pipeline,
+    fit_probability_calibrator,
     save_validation_artifacts,
     validate_season_holdouts,
+    validate_season_holdouts_with_calibration,
 )
 
 
@@ -77,3 +82,38 @@ def test_save_validation_artifacts_writes_expected_files(tmp_path: Path) -> None
     assert artifacts.calibration_table_path.exists()
     assert artifacts.oof_predictions_path.exists()
     assert artifacts.reliability_diagram_path.exists()
+
+
+def test_validate_season_holdouts_with_calibration_returns_comparison() -> None:
+    frame = _build_validation_frame()
+
+    audit = validate_season_holdouts_with_calibration(
+        frame,
+        feature_cols=["seed_diff", "elo_diff"],
+        holdout_seasons=[2023, 2024],
+        model_builder=build_logistic_pipeline,
+        train_min_games=50,
+    )
+
+    assert isinstance(audit, CalibrationAuditSummary)
+    assert audit.comparison["method"].tolist() == ["raw", "isotonic", "platt"] or set(
+        audit.comparison["method"]
+    ) == {"raw", "isotonic", "platt"}
+    assert {"flat_brier", "log_loss", "ece", "max_abs_gap"}.issubset(audit.comparison.columns)
+
+
+def test_probability_calibrator_clips_outputs() -> None:
+    raw_preds = pd.Series([0.01, 0.2, 0.8, 0.99])
+    outcomes = pd.Series([0, 0, 1, 1])
+
+    isotonic = fit_probability_calibrator(raw_preds, outcomes, method="isotonic")
+    calibrated = apply_probability_calibrator(
+        raw_preds,
+        isotonic,
+        method="isotonic",
+        clip_min=0.1,
+        clip_max=0.9,
+    )
+
+    assert calibrated.min() >= 0.1
+    assert calibrated.max() <= 0.9

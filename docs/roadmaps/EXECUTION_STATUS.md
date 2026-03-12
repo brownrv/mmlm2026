@@ -1,6 +1,6 @@
 # Execution Status
 
-Last updated: 2026-03-10
+Last updated: 2026-03-12
 
 ---
 
@@ -15,13 +15,17 @@ Note: Evaluation policy was revised on 2026-03-10. Flat Brier on held-out played
 |---|---|---|
 | Gate 0 — Infrastructure Ready | Complete | 2026-03-11 |
 | Gate 1 — Baselines Established | Complete | 2026-03-13 |
-| Gate 2 — Primary Models Ready | Not started | 2026-03-16 |
-| Gate 3 — Ensemble and Final Submission | Not started | 2026-03-18 |
+| Gate 2 — Primary Models Ready | Complete | 2026-03-16 |
+| Gate 3 — Ensemble and Final Submission | In progress | 2026-03-18 |
 | Hard Deadline | Not started | 2026-03-19 16:00 UTC |
 
 **ADR 0004 resolved (2026-03-10):** Option A — separate models per league. Round-group separation (R1 vs R2+) is an open experiment axis (ARCH-RG-01 through ARCH-RG-06).
 
-Progress note (2026-03-10): Gate 0 infrastructure is complete. Gate 1 is also complete: ARCH-01 through ARCH-04 are executed and logged in MLflow (`c0ef5d21cbf44cc185edc4ec7b920b43`, `809fa43caaf24469b2a2b68cf3afbfc9`, `ed65e8bcc7e04961a97bbccd4e868c71`, `c4929b684eea490faaca353aefbb5e46`), the 2025 holdout sanity check is complete (`c3733a50efc7491586f3060e0dc317b0`, `84f848e9634340f1adf0233d36ded46f`), and Feature Phase B builders are implemented and verified. The next execution target is Gate 2 primary-model work.
+**Gate 3 freeze (2026-03-12):**
+- Men leader frozen to generalization-tuned men reference margin model (`337d3b992b884dbb800c078561d37622`; prior 2025 sanity check on the same reference path `a11c60d33cde4fd68f7852fc65dda1db`)
+- Women leader frozen to `ARCH-04B` (`ba0a02b8c8bc404089bdd2de7fe9a917`; 2025 sanity check `f6eac553495949a5805c84fb4cdef757`)
+
+Progress note (2026-03-12): Gate 0 infrastructure is complete. Gate 1 is also complete: ARCH-01 through ARCH-04 are executed and logged in MLflow (`c0ef5d21cbf44cc185edc4ec7b920b43`, `809fa43caaf24469b2a2b68cf3afbfc9`, `ed65e8bcc7e04961a97bbccd4e868c71`, `c4929b684eea490faaca353aefbb5e46`), the 2025 holdout sanity check is complete (`c3733a50efc7491586f3060e0dc317b0`, `84f848e9634340f1adf0233d36ded46f`), and Feature Phase B builders are implemented and verified. Gate 2 is now complete as an evaluation gate: ARCH-05/06 (`ffd0b86de56e40b7ac6a13e4990420c1`, `d7fa5c4793f4497ba8bb7d135591159b`), ARCH-07/08 histogram GBT (`0cfe2f69719944bcb79502464af946b6`, `98c0ca0b08c246409b782aaf627d7641`), ARCH-07/08 XGBoost retries (`087a77668be3416b99645578b2978e7a`, `bed6b72c7159465282218c492713bd6c`), VAL-02 calibration audits (`bcfa7d9e02e04600a95f214fbd1c2fd5`, `28a78f11880b42d88c6dae21b07ee7f6`, `553e266635914bcc832d3efb94538623`), COMBO-01/02 simple blends (`9b313ac531e044a182029a82f3fef182`, `d13e89d9a38448f9ab01dd76e20fc879`), FEAT-11 (`d06d9567991346639c1ce31c2e22502d`, `922d8f5438c341f985e7c692d423f43a`), FEAT-12 (`54e0cb19318840aa9fdf01b29c4fc94c`, `5279d3fd507544898087160d521463fc`), FEAT-13 (`674cc9811ca148efb72b9dbeaa799076`), FEAT-15 (`f57fb223f785496b8fa80c259be57115`), VAL-05 women reference replication (`44361f54bf444ba5a906238538af0cba`), VAL-05 women alpha reopen (`1ab9f3bd1cb549d0a0c7a3898bb2a385`), VAL-05 women reference replication v2 with local Elo (`a175a91ebe204a448b7895a8daf5e82d`), VAL-05 women reference replication with generalization Elo (`fdf6e7b90d07447ab6624b51d3be06ca`), VAL-05 men reference margin regression (`252ec46a6a874810b9e42237f7b23b1c`), VAL-05 men reference margin regression v2 (`db98ed1646cd400ead567ae4b6469a9a`), VAL-05 men reference margin regression v3 with local Elo (`f160c1daa6da4f94a1b3e9df6e2f308f`), VAL-05 men reference margin regression with generalization Elo (`337d3b992b884dbb800c078561d37622`), and ARCH-04B tuned Elo replacement (`ba0a02b8c8bc404089bdd2de7fe9a917`) challengers are complete. FEAT-12 improved on FEAT-11, especially for women, while FEAT-13 and FEAT-15 did not improve on FEAT-12. The fuller women reference replication was promising but still trailed the old baseline; local and generalization-tuned women Elo did not improve that path, and reopening alpha improved it to `0.137246` but still left it behind `ARCH-04B`. The men reference path improved first with local Elo (`0.195985`) and then again with generalization-tuned Elo (`0.195566`), giving men a slightly stronger frozen leader on the 2023–2024 held-out window. The tuned/carryover Elo replacement beat raw `ARCH-04`, and its 2025 holdout sanity check (`f6eac553495949a5805c84fb4cdef757`) also passed cleanly. The current frozen leaders are the generalization-tuned men reference margin model for men and ARCH-04B tuned Elo for women unless a later challenger beats them.
 
 ---
 
