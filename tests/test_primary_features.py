@@ -5,6 +5,7 @@ import pytest
 
 from mmlm2026.features.primary import (
     add_phase_c_features,
+    build_market_implied_strength_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
@@ -57,6 +58,25 @@ def test_build_season_momentum_features_returns_second_half_minus_first_half() -
 
     assert momentum_map[10] < 0.0
     assert momentum_map[20] > 0.0
+
+
+def test_build_market_implied_strength_features_returns_team_level_summary() -> None:
+    regular = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "DayNum": [10, 20],
+            "WTeamID": [10, 20],
+            "LTeamID": [20, 10],
+            "WProbability": [0.75, 0.60],
+            "LProbability": [0.25, 0.40],
+        }
+    )
+
+    market = build_market_implied_strength_features(regular)
+    market_map = market.set_index("TeamID")["market_implied_win_prob"].to_dict()
+
+    assert market_map[10] == pytest.approx(0.575)
+    assert market_map[20] == pytest.approx(0.425)
 
 
 def test_build_phase_ab_team_features_merges_phase_a_and_b_inputs() -> None:

@@ -30,6 +30,7 @@ from mmlm2026.features.espn import (
     load_espn_men_rotation_stability_features,
 )
 from mmlm2026.features.primary import (
+    build_market_implied_strength_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
@@ -54,6 +55,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-name", default="val-05-men-reference-margin")
     parser.add_argument("--day-cutoff", type=int, default=134)
     parser.add_argument("--season-floor", type=int, default=2004)
+    parser.add_argument(
+        "--market-root",
+        type=Path,
+        default=Path("data/processed/betexplorer"),
+    )
     parser.add_argument(
         "--espn-root",
         type=Path,
@@ -106,6 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Include second-half minus first-half average margin "
             "differential as an extra feature."
         ),
+    )
+    parser.add_argument(
+        "--include-market-strength",
+        action="store_true",
+        help="Include regular-season BetExplorer market-implied strength differential.",
     )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
@@ -200,6 +211,19 @@ def main() -> int:
             how="left",
             validate="one_to_one",
         )
+    if args.include_market_strength:
+        market_regular = pd.read_parquet(args.market_root / "ncaam_regular.parquet")
+        market_regular = market_regular.loc[market_regular["Season"] >= args.season_floor].copy()
+        market_strength = build_market_implied_strength_features(
+            market_regular,
+            day_cutoff=args.day_cutoff,
+        )
+        team_features = team_features.merge(
+            market_strength,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
     if args.include_espn_four_factor:
         seasons = sorted(
             season
@@ -270,6 +294,8 @@ def main() -> int:
         feature_cols.append("seed_elo_gap_diff")
     if args.include_season_momentum:
         feature_cols.append("season_momentum_diff")
+    if args.include_market_strength:
+        feature_cols.append("market_implied_strength_diff")
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
@@ -292,6 +318,8 @@ def main() -> int:
         calibration_feature_cols.append("seed_elo_gap_diff")
     if args.include_season_momentum:
         calibration_feature_cols.append("season_momentum_diff")
+    if args.include_market_strength:
+        calibration_feature_cols.append("market_implied_strength_diff")
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -731,6 +759,11 @@ def _log_mlflow_run(
             + (",feature:late_feat_26_pythag_expectancy_v1" if args.include_pythag else "")
             + (",feature:late_feat_23_seed_elo_gap_v1" if args.include_seed_elo_gap else "")
             + (",feature:late_feat_25_season_momentum_v1" if args.include_season_momentum else "")
+            + (
+                ",feature:late_feat_16_market_implied_strength_v1"
+                if args.include_market_strength
+                else ""
+            )
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -752,6 +785,7 @@ def _log_mlflow_run(
                 "include_pythag": str(args.include_pythag).lower(),
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "include_season_momentum": str(args.include_season_momentum).lower(),
+                "include_market_strength": str(args.include_market_strength).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }

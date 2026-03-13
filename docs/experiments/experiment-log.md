@@ -29,6 +29,74 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-MKT-01: men BetExplorer market-strength challenger
+
+Status: Completed
+
+Hypothesis:
+- A regular-season market-implied strength feature derived from BetExplorer pregame probabilities will improve the frozen men reference path by adding compressed public-strength information not fully captured by Elo and seed.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- dataset:betexplorer_processed_v1
+- validation:late_val_06_market_audit
+
+MLflow:
+- Run name: `late-mkt-01-men-market-strength`
+- Run ID: N/A
+
+Result:
+- Added `market_implied_strength_diff`, built from season-level average logit-transformed BetExplorer pregame win probabilities on regular-season games before DayNum `134`.
+- The men challenger scored `flat_brier = 0.197276` and `log_loss = 0.579413` on the 2023–2024 held-out window.
+- Per-season flat Brier: `2023 = 0.207453`, `2024 = 0.187099`.
+- This is worse than the frozen men leader `0.195566`, so the first men market-strength slice does not advance.
+
+Re-test if:
+- A second market formulation uses a different aggregation, such as closing/opening split, market residuals vs Elo, or opponent-adjusted market strength.
+- The BetExplorer dataset is enriched with additional fields beyond the current single implied-probability snapshot.
+
+Related:
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [data/interim/reference_runs/m_reference_margin/validation/per_season_metrics.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/interim/reference_runs/m_reference_margin/validation/per_season_metrics.csv)
+
+---
+## 2026-03-13 — LATE-VAL-06: BetExplorer market-data coverage and leakage audit
+
+Status: Completed
+
+Hypothesis:
+- BetExplorer odds can serve as a usable late challenger only if the historical joins are clean, the implied probabilities behave like genuine pregame probabilities, and coverage is high enough in the seasons and leagues we care about.
+
+Dependencies:
+- dataset:betexplorer_processed_v1
+- diagnostics:frozen_historical_performance_v1
+- plan:002_late_val_06
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Added a market-audit workflow that loads canonical BetExplorer parquet files, summarizes per-season coverage/sanity, and compares market-only tournament Brier to the frozen leaders on the exact covered rows.
+- Men coverage is operationally usable in recent seasons: regular-season coverage is `98.96%` (`2021`), `99.36%` (`2022`), `99.75%` (`2023`), `99.22%` (`2024`), and `97.45%` (`2025`); tournament coverage is `100%` for `2021` through `2025`.
+- Women coverage is not operationally viable: regular-season coverage is `0%` for `1998-2024`, then only `25.28%` in `2025`; tournament coverage is `0%` for `1998-2024`, then `85.07%` in `2025` only.
+- On the market-covered tournament subset, men market-only Brier is slightly worse than the frozen local men leader overall (`0.186486` vs `0.184178` across `940` games), though it beats the local model in a few seasons (`2013`, `2016`, `2021`, `2022`, `2023`).
+- On women, the market-covered subset is only `2025`, but there it beats the frozen local women leader materially (`0.102316` vs `0.126317` across `53` games). That result is interesting but not enough to overcome the historical coverage gap.
+- Verdict: `LATE-MKT-01` is green-lit for men only. Women market challengers should remain blocked unless BetExplorer historical coverage expands or a different market source is added.
+
+Re-test if:
+- BetExplorer women coverage is backfilled for pre-2025 seasons.
+- A new market dataset with better women history is added.
+- The frozen leaders change enough that the market-covered subset comparison should be re-run.
+
+Related:
+- [src/mmlm2026/analysis/market_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/analysis/market_audit.py)
+- [scripts/export_market_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_market_audit.py)
+- [data/interim/market_audit/betexplorer_viability_summary.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/interim/market_audit/betexplorer_viability_summary.csv)
+- [data/interim/market_audit/betexplorer_tourney_vs_local.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/interim/market_audit/betexplorer_tourney_vs_local.csv)
+
+---
 ## 2026-03-13 — LATE-EXT-01/02: benchmark-guided challenger design
 
 Status: Completed

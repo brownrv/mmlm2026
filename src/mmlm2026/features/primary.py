@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from mmlm2026.features.phase_b import (
@@ -152,6 +153,81 @@ def build_season_momentum_features(
     return pivoted[["Season", "TeamID", "season_momentum"]].sort_values(
         ["Season", "TeamID"]
     ).reset_index(drop=True)
+
+
+def build_market_implied_strength_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+    clip_eps: float = 1e-6,
+) -> pd.DataFrame:
+    """Build season-level market-implied strength summaries from pregame probabilities."""
+    required = {
+        "Season",
+        "DayNum",
+        "WTeamID",
+        "LTeamID",
+        "WProbability",
+        "LProbability",
+    }
+    missing = required.difference(regular_season_results.columns)
+    if missing:
+        raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+
+    filtered = regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff].copy()
+    filtered = filtered.loc[
+        filtered["WProbability"].notna() & filtered["LProbability"].notna()
+    ].copy()
+    if filtered.empty:
+        return pd.DataFrame(
+            columns=[
+                "Season",
+                "TeamID",
+                "market_games",
+                "market_implied_win_prob",
+                "market_implied_strength",
+            ]
+        )
+
+    rows: list[dict[str, float | int]] = []
+    for _, row in filtered.iterrows():
+        season = int(row["Season"])
+        winner_prob = float(row["WProbability"])
+        loser_prob = float(row["LProbability"])
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["WTeamID"]),
+                "market_implied_win_prob": winner_prob,
+                "market_logit": np.log(
+                    np.clip(winner_prob, clip_eps, 1.0 - clip_eps)
+                    / np.clip(1.0 - winner_prob, clip_eps, 1.0 - clip_eps)
+                ),
+            }
+        )
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["LTeamID"]),
+                "market_implied_win_prob": loser_prob,
+                "market_logit": np.log(
+                    np.clip(loser_prob, clip_eps, 1.0 - clip_eps)
+                    / np.clip(1.0 - loser_prob, clip_eps, 1.0 - clip_eps)
+                ),
+            }
+        )
+
+    market_games = pd.DataFrame(rows)
+    return (
+        market_games.groupby(["Season", "TeamID"], as_index=False)
+        .agg(
+            market_games=("market_implied_win_prob", "size"),
+            market_implied_win_prob=("market_implied_win_prob", "mean"),
+            market_implied_strength=("market_logit", "mean"),
+        )
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
 
 
 def build_phase_ab_team_features(
@@ -625,6 +701,9 @@ def _attach_team_feature_diffs(
         "avg_score",
         "avg_points_allowed",
         "pythag_expectancy",
+        "market_games",
+        "market_implied_win_prob",
+        "market_implied_strength",
         "season_momentum",
         "elo",
         "tempo",
@@ -717,6 +796,14 @@ def _attach_team_feature_diffs(
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
     if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):
         merged["pythag_diff"] = merged["low_pythag_expectancy"] - merged["high_pythag_expectancy"]
+    if {"low_market_implied_strength", "high_market_implied_strength"}.issubset(merged.columns):
+        merged["market_implied_strength_diff"] = (
+            merged["low_market_implied_strength"] - merged["high_market_implied_strength"]
+        )
+    if {"low_market_implied_win_prob", "high_market_implied_win_prob"}.issubset(merged.columns):
+        merged["market_implied_win_prob_diff"] = (
+            merged["low_market_implied_win_prob"] - merged["high_market_implied_win_prob"]
+        )
     if {"low_season_momentum", "high_season_momentum"}.issubset(merged.columns):
         merged["season_momentum_diff"] = (
             merged["low_season_momentum"] - merged["high_season_momentum"]
