@@ -30,6 +30,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("data/interim/frozen_historical_performance.parquet"),
     )
     parser.add_argument(
+        "--all-matchups-output-path",
+        type=Path,
+        default=Path("data/interim/frozen_historical_all_matchups.parquet"),
+    )
+    parser.add_argument(
         "--season-start",
         type=int,
         default=2005,
@@ -59,22 +64,37 @@ def main() -> int:
                 continue
             try:
                 context = men_context if league == "M" else women_context
-                rows.append(build_historical_rows(args.data_dir, season, league, context=context))
+                rows.append(
+                    build_historical_all_matchup_rows(
+                        args.data_dir,
+                        season,
+                        league,
+                        context=context,
+                    )
+                )
             except ValueError as exc:
                 skipped.append((league, season, str(exc)))
 
     if not rows:
         raise ValueError("No historical rows were generated for the requested season range.")
-    performance = pd.concat(rows, ignore_index=True)
+    all_matchups = pd.concat(rows, ignore_index=True)
+    all_matchups = all_matchups.sort_values(["Season", "league", "ID"]).reset_index(drop=True)
+    performance = all_matchups.loc[all_matchups["was_played"]].copy()
     performance = performance.sort_values(["Season", "league", "actual_round", "ID"]).reset_index(
         drop=True
     )
 
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
+    args.all_matchups_output_path.parent.mkdir(parents=True, exist_ok=True)
+    all_matchups.to_parquet(args.all_matchups_output_path, index=False)
+    all_matchups_csv_path = args.all_matchups_output_path.with_suffix(".csv")
+    all_matchups.to_csv(all_matchups_csv_path, index=False)
     performance.to_parquet(args.output_path, index=False)
     csv_path = args.output_path.with_suffix(".csv")
     performance.to_csv(csv_path, index=False)
 
+    print(f"Wrote {len(all_matchups)} rows to {args.all_matchups_output_path}")
+    print(f"Wrote CSV companion to {all_matchups_csv_path}")
     print(f"Wrote {len(performance)} rows to {args.output_path}")
     print(f"Wrote CSV companion to {csv_path}")
     if skipped:
@@ -84,14 +104,14 @@ def main() -> int:
     return 0
 
 
-def build_historical_rows(
+def build_historical_all_matchup_rows(
     data_dir: Path,
     season: int,
     league: str,
     *,
     context,
 ) -> pd.DataFrame:
-    """Build realized played-game diagnostics for one season and league."""
+    """Build all-matchup diagnostics with realized-game flags for one season and league."""
     config = _league_config(data_dir, league)
     seeds = pd.read_csv(config["seeds"])
     results = pd.read_csv(config["results"])
@@ -137,32 +157,39 @@ def build_historical_rows(
     )
     play_probs["bucket"] = play_probs["play_prob"].map(bucket_from_play_prob)
 
-    merged = (
-        realized[
-            [
-                "Season",
-                "ID",
-                "LowTeamID",
-                "HighTeamID",
-                "outcome",
-                "actual_round",
-                "actual_round_group",
-            ]
+    realized_lookup = realized[
+        [
+            "ID",
+            "outcome",
+            "actual_round",
+            "actual_round_group",
         ]
-        .merge(
-            predictions[["ID", "Pred", "Round", "round_group"]],
-            on="ID",
-            how="left",
-            validate="one_to_one",
-        )
+    ].copy()
+    realized_lookup["was_played"] = True
+
+    merged = (
+        predictions[["ID", "Pred", "Round", "round_group"]]
         .merge(
             play_probs[["ID", "play_prob", "bucket"]],
             on="ID",
             how="left",
             validate="one_to_one",
         )
+        .merge(
+            submission_rows[["ID", "Season", "LowTeamID", "HighTeamID"]],
+            on="ID",
+            how="left",
+            validate="one_to_one",
+        )
+        .merge(
+            realized_lookup,
+            on="ID",
+            how="left",
+            validate="one_to_one",
+        )
     )
     merged["league"] = league
+    merged["was_played"] = merged["was_played"].eq(True)
     merged["predicted_round"] = merged["Round"]
     merged["predicted_round_group"] = merged["round_group"]
     merged["brier_component"] = (merged["Pred"] - merged["outcome"]).pow(2)
@@ -173,6 +200,7 @@ def build_historical_rows(
             "ID",
             "LowTeamID",
             "HighTeamID",
+            "was_played",
             "outcome",
             "Pred",
             "play_prob",
