@@ -115,11 +115,16 @@ Keep it updated whenever workflows, automation, or policies change.
 
 - [ ] Confirm latest competition timeline from Kaggle page.
 - [ ] Pull latest Kaggle data update if available.
-- [ ] Rebuild features and rerun final validation.
+- [ ] Confirm live runbook in `docs/COMPETITION_OPERATIONS.md` is current.
+- [ ] Rebuild final submission with:
+- `uv run python scripts/build_frozen_submission.py --sample-submission data/raw/march-machine-learning-mania-2026/SampleSubmissionStage2.csv --season 2026 --save-artifacts --tag final-candidate`
+- [ ] Re-run final validation with:
+- `uv run python scripts/validate_submission.py data/submissions/2026_final-candidate_submission.csv --sample data/raw/march-machine-learning-mania-2026/SampleSubmissionStage2.csv`
 - [ ] Validate submission schema:
 - `ID = Season_LowTeamID_HighTeamID`
 - `Pred = P(lower TeamID wins)`
 - [ ] Ensure probabilities are bounded (no exact 0 or 1 unless explicitly intended and justified).
+- [ ] Confirm 2026 regular-season inputs are present locally before blaming pipeline code.
 - [ ] Select final submission explicitly on Kaggle.
 
 ## Weekly Maintenance
