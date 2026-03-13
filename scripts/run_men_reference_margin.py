@@ -20,7 +20,11 @@ from mmlm2026.evaluation.validation import (
     build_calibration_table,
     save_validation_artifacts,
 )
-from mmlm2026.features.elo import compute_pre_tourney_elo_ratings
+from mmlm2026.features.elo import (
+    compute_elo_momentum_features,
+    compute_pre_tourney_elo_ratings,
+    compute_tournament_only_elo_ratings,
+)
 from mmlm2026.features.espn import (
     load_espn_men_four_factor_strength_features,
     load_espn_men_rotation_stability_features,
@@ -73,6 +77,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-espn-rotation",
         action="store_true",
         help="Include ESPN-derived rotation-stability differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-tourney-elo",
+        action="store_true",
+        help="Include tournament-only Elo differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-elo-momentum",
+        action="store_true",
+        help="Include Elo momentum differential from DayNum-115 to pre-tournament Elo.",
+    )
+    parser.add_argument(
+        "--include-pythag",
+        action="store_true",
+        help="Include Pythagorean expectancy differential as an extra feature.",
     )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
@@ -127,6 +146,35 @@ def main() -> int:
         day_cutoff=args.day_cutoff,
         close_game_margin_threshold=1,
     )
+    if args.include_tourney_elo:
+        tourney_elo = compute_tournament_only_elo_ratings(results, seeds=seeds).rename(
+            columns={"elo": "tourney_elo"}
+        )
+        team_features = team_features.merge(
+            tourney_elo,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_elo_momentum:
+        elo_momentum = compute_elo_momentum_features(
+            regular_season,
+            mid_day_cutoff=115,
+            end_day_cutoff=args.day_cutoff,
+            initial_rating=args.elo_initial_rating,
+            k_factor=args.elo_k_factor,
+            home_advantage=args.elo_home_advantage,
+            season_carryover=args.elo_season_carryover,
+            scale=args.elo_scale,
+            mov_alpha=args.elo_mov_alpha,
+            weight_regular=args.elo_weight_regular,
+        )[["Season", "TeamID", "elo_momentum"]]
+        team_features = team_features.merge(
+            elo_momentum,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
     if args.include_espn_four_factor:
         seasons = sorted(
             season
@@ -187,6 +235,12 @@ def main() -> int:
         feature_cols.append("espn_four_factor_strength_diff")
     if args.include_espn_rotation:
         feature_cols.append("espn_rotation_stability_diff")
+    if args.include_tourney_elo:
+        feature_cols.append("tourney_elo_diff")
+    if args.include_elo_momentum:
+        feature_cols.append("elo_momentum_diff")
+    if args.include_pythag:
+        feature_cols.append("pythag_diff")
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
@@ -199,6 +253,12 @@ def main() -> int:
         calibration_feature_cols.append("espn_four_factor_strength_diff")
     if args.include_espn_rotation:
         calibration_feature_cols.append("espn_rotation_stability_diff")
+    if args.include_tourney_elo:
+        calibration_feature_cols.append("tourney_elo_diff")
+    if args.include_elo_momentum:
+        calibration_feature_cols.append("elo_momentum_diff")
+    if args.include_pythag:
+        calibration_feature_cols.append("pythag_diff")
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -633,6 +693,9 @@ def _log_mlflow_run(
             + (",feature:late_rate_01_ridge_strength_v1" if args.include_ridge_strength else "")
             + (",feature:late_feat_18_espn_four_factor_v1" if args.include_espn_four_factor else "")
             + (",feature:late_feat_19_espn_rotation_v1" if args.include_espn_rotation else "")
+            + (",feature:late_feat_21_tourney_elo_v1" if args.include_tourney_elo else "")
+            + (",feature:late_feat_22_elo_momentum_v1" if args.include_elo_momentum else "")
+            + (",feature:late_feat_26_pythag_expectancy_v1" if args.include_pythag else "")
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -649,6 +712,9 @@ def _log_mlflow_run(
                 "include_ridge_strength": str(args.include_ridge_strength).lower(),
                 "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
                 "include_espn_rotation": str(args.include_espn_rotation).lower(),
+                "include_tourney_elo": str(args.include_tourney_elo).lower(),
+                "include_elo_momentum": str(args.include_elo_momentum).lower(),
+                "include_pythag": str(args.include_pythag).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }

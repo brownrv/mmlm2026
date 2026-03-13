@@ -29,6 +29,102 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-FEAT-26: Pythagorean expectancy
+
+Status: Completed
+
+Hypothesis:
+- Pythagorean win expectancy from season-average scoring and points allowed is a more stable quality signal than raw win percentage and adds useful information on top of seed and Elo.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_26_pythag_expectancy_v1
+
+MLflow:
+- Run name: `late-feat-26-men-pythag`
+- Run name: `late-feat-26-women-pythag`
+
+Result:
+- Added `pythag_diff`, defined as the differential in season-level Pythagorean expectancy using the standard `10.25` exponent, to the current men and women leader-family challengers.
+- The men challenger scored `flat_brier = 0.195654` and `log_loss = 0.578176` on the 2023-2024 held-out window, nearly tying but still missing the frozen men leader at `0.195566`.
+- The women challenger scored `flat_brier = 0.133332` and `log_loss = 0.409086`, improving over several recent women late-feature challengers but still remaining behind the routed women leader at `0.131950`.
+- Pythagorean expectancy does not advance as a standalone additive feature in either league.
+
+Re-test if:
+- It is bundled with another low-effort derived feature such as seed-Elo gap or Elo momentum rather than tested in isolation.
+- A routed `R2+`-specific challenger uses Pythagorean expectancy only in later rounds.
+
+Related:
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users\brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users\brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-FEAT-22: Elo momentum
+
+Status: Completed
+
+Hypothesis:
+- Elo trajectory from `DayNum 115` to the end of the regular season adds signal beyond static end-of-season Elo, especially for teams trending up or down entering the tournament.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_22_elo_momentum_v1
+
+MLflow:
+- Run name: `late-feat-22-men-elo-momentum`
+- Run name: `late-feat-22-women-elo-momentum`
+
+Result:
+- Added `elo_momentum_diff`, defined as pre-tournament Elo minus `DayNum 115` Elo, to the current men and women leader-family challengers.
+- The men challenger scored `flat_brier = 0.195764` and `log_loss = 0.578253` on the 2023-2024 held-out window, improving on `LATE-FEAT-21` but still missing the frozen men leader at `0.195566`.
+- The women challenger scored `flat_brier = 0.138076` and `log_loss = 0.418725`, well behind the routed women leader at `0.131950`.
+- Elo momentum does not advance as a unified additive feature for either league.
+
+Re-test if:
+- A future challenger uses Elo momentum only in routed `R2+` models instead of unified models.
+- Elo momentum is combined with another low-effort derived bundle such as seed-Elo gap or Pythagorean expectancy rather than tested in isolation.
+
+Related:
+- [src/mmlm2026/features/elo.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/elo.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-FEAT-21: tournament-only Elo
+
+Status: Completed
+
+Hypothesis:
+- A second Elo system trained only on historical tournament games captures persistent tournament-specific strength that improves the frozen leaders when added as `tourney_elo_diff`.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_21_tourney_elo_v1
+
+MLflow:
+- Run name: `late-feat-21-men-tourney-elo`
+- Run name: `late-feat-21-women-tourney-elo`
+
+Result:
+- Added a tournament-only Elo feature path that fits a separate Elo process on historical tournament games and carries `tourney_elo_diff` as an additive challenger feature.
+- The men challenger scored `flat_brier = 0.196078` and `log_loss = 0.578960` on the 2023-2024 held-out window, which did not beat the frozen men leader at `0.195566`.
+- The women challenger scored `flat_brier = 0.136614` and `log_loss = 0.418370` on the 2023-2024 held-out window, which did not beat the frozen women leader at `0.131950`.
+- Tournament-only Elo did not advance in either league.
+
+Re-test if:
+- A future challenger uses tournament-only Elo as a routed `R2+`-specific signal rather than a unified additive feature.
+- The tournament-only Elo process is retuned jointly with the base full-season Elo rather than added post hoc.
+
+Related:
+- [src/mmlm2026/features/elo.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/elo.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
 ## 2026-03-13 — LATE-FEAT-19: men ESPN rotation-stability proxies
 
 Status: Completed

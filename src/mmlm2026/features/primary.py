@@ -26,6 +26,7 @@ def build_team_season_summary(
     regular_season_results: pd.DataFrame,
     *,
     day_cutoff: int = 134,
+    pythag_exponent: float = 10.25,
 ) -> pd.DataFrame:
     """Build season-level win percentage and scoring summaries."""
     required = {
@@ -69,7 +70,7 @@ def build_team_season_summary(
         )
 
     team_games = pd.DataFrame(rows)
-    return (
+    summary = (
         team_games.groupby(["Season", "TeamID"], as_index=False)
         .agg(
             games=("win", "size"),
@@ -81,6 +82,12 @@ def build_team_season_summary(
         .sort_values(["Season", "TeamID"])
         .reset_index(drop=True)
     )
+    score_power = summary["avg_score"].astype(float).clip(lower=1e-6) ** pythag_exponent
+    allowed_power = (
+        summary["avg_points_allowed"].astype(float).clip(lower=1e-6) ** pythag_exponent
+    )
+    summary["pythag_expectancy"] = score_power / (score_power + allowed_power)
+    return summary
 
 
 def build_phase_ab_team_features(
@@ -553,6 +560,7 @@ def _attach_team_feature_diffs(
         "avg_margin",
         "avg_score",
         "avg_points_allowed",
+        "pythag_expectancy",
         "elo",
         "tempo",
         "off_eff",
@@ -576,6 +584,8 @@ def _attach_team_feature_diffs(
         "women_hca_adj_off_eff",
         "women_hca_adj_def_eff",
         "women_hca_adj_net_eff",
+        "tourney_elo",
+        "elo_momentum",
         "ridge_strength",
         "espn_four_factor_strength",
         "espn_rotation_stability",
@@ -632,6 +642,8 @@ def _attach_team_feature_diffs(
     merged["elo_diff"] = merged["low_elo"] - merged["high_elo"]
     merged["win_pct_diff"] = merged["low_win_pct"] - merged["high_win_pct"]
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
+    if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):
+        merged["pythag_diff"] = merged["low_pythag_expectancy"] - merged["high_pythag_expectancy"]
     merged["tempo_diff"] = merged["low_tempo"] - merged["high_tempo"]
     merged["off_eff_diff"] = merged["low_off_eff"] - merged["high_off_eff"]
     merged["def_eff_diff"] = merged["high_def_eff"] - merged["low_def_eff"]
@@ -663,6 +675,10 @@ def _attach_team_feature_diffs(
         merged["women_hca_adj_qg_diff"] = (
             merged["low_women_hca_adj_net_eff"] - merged["high_women_hca_adj_net_eff"]
         )
+    if {"low_tourney_elo", "high_tourney_elo"}.issubset(merged.columns):
+        merged["tourney_elo_diff"] = merged["low_tourney_elo"] - merged["high_tourney_elo"]
+    if {"low_elo_momentum", "high_elo_momentum"}.issubset(merged.columns):
+        merged["elo_momentum_diff"] = merged["low_elo_momentum"] - merged["high_elo_momentum"]
     if {"low_ridge_strength", "high_ridge_strength"}.issubset(merged.columns):
         merged["ridge_strength_diff"] = merged["low_ridge_strength"] - merged["high_ridge_strength"]
     if {"low_espn_four_factor_strength", "high_espn_four_factor_strength"}.issubset(merged.columns):

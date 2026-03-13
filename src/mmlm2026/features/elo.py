@@ -26,6 +26,125 @@ def compute_end_of_regular_season_elo(
     )
 
 
+def compute_tournament_only_elo_ratings(
+    tourney_results: pd.DataFrame,
+    *,
+    seeds: pd.DataFrame | None = None,
+    initial_rating: float = 1500.0,
+    k_factor: float = 32.0,
+    season_carryover: float = 0.85,
+    scale: float = 400.0,
+) -> pd.DataFrame:
+    """Compute pre-tournament Elo snapshots using only prior tournament games."""
+    required_tourney = {"Season", "DayNum", "WTeamID", "LTeamID", "WScore", "LScore"}
+    missing_tourney = required_tourney.difference(tourney_results.columns)
+    if missing_tourney:
+        raise ValueError(f"Tournament results missing required columns: {sorted(missing_tourney)}")
+
+    if seeds is not None:
+        required_seeds = {"Season", "TeamID"}
+        missing_seeds = required_seeds.difference(seeds.columns)
+        if missing_seeds:
+            raise ValueError(f"Seed table missing required columns: {sorted(missing_seeds)}")
+
+    tourney = tourney_results.sort_values(["Season", "DayNum"]).copy()
+    seasons = (
+        sorted(int(season) for season in seeds["Season"].unique())
+        if seeds is not None
+        else sorted(int(season) for season in tourney["Season"].unique())
+    )
+    rows: list[dict[str, float | int]] = []
+    previous_ratings: dict[int, float] = {}
+
+    for season in seasons:
+        season_teams = (
+            set(int(team) for team in seeds.loc[seeds["Season"] == season, "TeamID"].tolist())
+            if seeds is not None
+            else set()
+        )
+        season_games = tourney.loc[tourney["Season"] == season].copy()
+        season_teams.update(int(team) for team in season_games["WTeamID"].tolist())
+        season_teams.update(int(team) for team in season_games["LTeamID"].tolist())
+        season_ratings = {
+            team: (
+                season_carryover * previous_ratings[team]
+                + (1.0 - season_carryover) * initial_rating
+            )
+            if team in previous_ratings
+            else initial_rating
+            for team in sorted(season_teams)
+        }
+
+        for team_id, rating in season_ratings.items():
+            rows.append({"Season": season, "TeamID": team_id, "elo": float(rating)})
+
+        if not season_games.empty:
+            season_games = season_games.copy()
+            season_games["WLoc"] = "N"
+            for _, row in season_games.iterrows():
+                _apply_elo_update(
+                    season_ratings,
+                    row,
+                    k_factor=k_factor,
+                    home_advantage=0.0,
+                    scale=scale,
+                    mov_alpha=0.0,
+                    weight=1.0,
+                )
+        previous_ratings = season_ratings
+
+    return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
+
+
+def compute_elo_momentum_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    mid_day_cutoff: int = 115,
+    end_day_cutoff: int = 134,
+    initial_rating: float = 1500.0,
+    k_factor: float = 20.0,
+    home_advantage: float = 100.0,
+    season_carryover: float = 1.0,
+    scale: float = 400.0,
+    mov_alpha: float = 0.0,
+    weight_regular: float = 1.0,
+) -> pd.DataFrame:
+    """Compute team-season Elo momentum as end-of-season Elo minus mid-season Elo."""
+    mid_ratings = compute_pre_tourney_elo_ratings(
+        regular_season_results,
+        day_cutoff=mid_day_cutoff,
+        initial_rating=initial_rating,
+        k_factor=k_factor,
+        home_advantage=home_advantage,
+        season_carryover=season_carryover,
+        scale=scale,
+        mov_alpha=mov_alpha,
+        weight_regular=weight_regular,
+        weight_tourney=1.0,
+    ).rename(columns={"elo": "mid_elo"})
+    end_ratings = compute_pre_tourney_elo_ratings(
+        regular_season_results,
+        day_cutoff=end_day_cutoff,
+        initial_rating=initial_rating,
+        k_factor=k_factor,
+        home_advantage=home_advantage,
+        season_carryover=season_carryover,
+        scale=scale,
+        mov_alpha=mov_alpha,
+        weight_regular=weight_regular,
+        weight_tourney=1.0,
+    ).rename(columns={"elo": "end_elo"})
+
+    momentum = end_ratings.merge(
+        mid_ratings,
+        on=["Season", "TeamID"],
+        how="inner",
+        validate="one_to_one",
+    )
+    momentum["elo_momentum"] = momentum["end_elo"] - momentum["mid_elo"]
+    return momentum.sort_values(["Season", "TeamID"]).reset_index(drop=True)
+
+
 def compute_pre_tourney_elo_ratings(
     regular_season_results: pd.DataFrame,
     *,
@@ -332,6 +451,44 @@ def build_elo_seed_submission_features(
         .sort_values(["Season", "LowTeamID", "HighTeamID"])
         .reset_index(drop=True)
     )
+
+
+def attach_secondary_elo_features(
+    frame: pd.DataFrame,
+    elo_ratings: pd.DataFrame,
+    *,
+    prefix: str,
+) -> pd.DataFrame:
+    """Attach a secondary Elo snapshot and differential to an existing matchup frame."""
+    required_frame = {"Season", "LowTeamID", "HighTeamID"}
+    missing_frame = required_frame.difference(frame.columns)
+    if missing_frame:
+        raise ValueError(f"Matchup frame missing required columns: {sorted(missing_frame)}")
+
+    required_elo = {"Season", "TeamID", "elo"}
+    missing_elo = required_elo.difference(elo_ratings.columns)
+    if missing_elo:
+        raise ValueError(f"Elo table missing required columns: {sorted(missing_elo)}")
+
+    low_col = f"low_{prefix}"
+    high_col = f"high_{prefix}"
+    diff_col = f"{prefix}_diff"
+    enriched = (
+        frame.merge(
+            elo_ratings.rename(columns={"TeamID": "LowTeamID", "elo": low_col}),
+            on=["Season", "LowTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+        .merge(
+            elo_ratings.rename(columns={"TeamID": "HighTeamID", "elo": high_col}),
+            on=["Season", "HighTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+    )
+    enriched[diff_col] = enriched[low_col] - enriched[high_col]
+    return enriched
 
 
 def _build_seed_features_core(

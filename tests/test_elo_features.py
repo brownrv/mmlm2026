@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from mmlm2026.features.elo import (
+    attach_secondary_elo_features,
     build_elo_seed_matchup_features,
     build_elo_seed_tourney_features,
+    compute_elo_momentum_features,
     compute_end_of_regular_season_elo,
     compute_pre_tourney_elo_ratings,
+    compute_tournament_only_elo_ratings,
     elo_probability_from_diff,
     pregame_expected_winner_probability,
 )
@@ -145,6 +149,104 @@ def test_compute_pre_tourney_elo_ratings_supports_carryover_and_tourney_updates(
 
     assert rating_2024 > 1500.0
     assert rating_2025 > rating_2025_no_tourney
+
+
+def test_compute_tournament_only_elo_ratings_uses_prior_tournament_results_only() -> None:
+    tourney = pd.DataFrame(
+        {
+            "Season": [2024, 2025],
+            "DayNum": [136, 136],
+            "WTeamID": [10, 20],
+            "LTeamID": [20, 10],
+            "WScore": [70, 75],
+            "LScore": [60, 65],
+        }
+    )
+    seeds = pd.DataFrame(
+        {
+            "Season": [2024, 2024, 2025, 2025],
+            "TeamID": [10, 20, 10, 20],
+        }
+    )
+
+    ratings = compute_tournament_only_elo_ratings(
+        tourney,
+        seeds=seeds,
+        initial_rating=1500.0,
+        k_factor=32.0,
+        season_carryover=0.85,
+        scale=400.0,
+    )
+
+    rating_2024 = ratings.loc[
+        (ratings["Season"] == 2024) & (ratings["TeamID"] == 10),
+        "elo",
+    ].iloc[0]
+    rating_2025 = ratings.loc[
+        (ratings["Season"] == 2025) & (ratings["TeamID"] == 10),
+        "elo",
+    ].iloc[0]
+
+    assert rating_2024 == 1500.0
+    assert rating_2025 > 1500.0
+
+
+def test_compute_elo_momentum_features_compares_mid_and_end_snapshots() -> None:
+    regular = pd.DataFrame(
+        {
+            "Season": [2025, 2025, 2025],
+            "DayNum": [10, 120, 125],
+            "WTeamID": [10, 20, 10],
+            "LTeamID": [20, 10, 20],
+            "WScore": [70, 75, 80],
+            "LScore": [60, 65, 70],
+            "WLoc": ["N", "N", "N"],
+        }
+    )
+
+    momentum = compute_elo_momentum_features(
+        regular,
+        mid_day_cutoff=115,
+        end_day_cutoff=134,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        home_advantage=0.0,
+        season_carryover=1.0,
+        scale=400.0,
+        mov_alpha=0.0,
+        weight_regular=1.0,
+    )
+    team10 = momentum.loc[momentum["TeamID"] == 10].iloc[0]
+    team20 = momentum.loc[momentum["TeamID"] == 20].iloc[0]
+
+    assert team10["elo_momentum"] == pytest.approx(team10["end_elo"] - team10["mid_elo"])
+    assert team20["elo_momentum"] == pytest.approx(team20["end_elo"] - team20["mid_elo"])
+    assert team10["elo_momentum"] == pytest.approx(-team20["elo_momentum"])
+    assert team10["elo_momentum"] < 0.0
+    assert team20["elo_momentum"] > 0.0
+
+
+def test_attach_secondary_elo_features_adds_prefixed_columns() -> None:
+    frame = pd.DataFrame(
+        {
+            "Season": [2025],
+            "LowTeamID": [10],
+            "HighTeamID": [20],
+        }
+    )
+    elo = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "TeamID": [10, 20],
+            "elo": [1530.0, 1470.0],
+        }
+    )
+
+    enriched = attach_secondary_elo_features(frame, elo, prefix="tourney_elo")
+
+    assert enriched["low_tourney_elo"].iloc[0] == 1530.0
+    assert enriched["high_tourney_elo"].iloc[0] == 1470.0
+    assert enriched["tourney_elo_diff"].iloc[0] == 60.0
 
 
 def test_elo_probability_from_diff_is_centered_at_half() -> None:

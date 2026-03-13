@@ -15,14 +15,20 @@ from mmlm2026.evaluation.validation import (
     build_logistic_pipeline,
     save_validation_artifacts,
 )
-from mmlm2026.features.elo import build_elo_seed_submission_features
+from mmlm2026.features.elo import (
+    attach_secondary_elo_features,
+    build_elo_seed_submission_features,
+    compute_elo_momentum_features,
+    compute_tournament_only_elo_ratings,
+)
+from mmlm2026.features.primary import build_team_season_summary
 from mmlm2026.submission.frozen_models import (
+    WOMEN_ELO_PARAMS,
     build_seeded_submission_rows,
     load_frozen_women_context,
 )
 from mmlm2026.utils.mlflow_tracking import start_tracked_run
 
-FEATURE_COLS = ["seed_diff", "elo_diff"]
 ROUND_GROUPS = ("R1", "R2+")
 
 
@@ -38,6 +44,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-features", action="store_true")
     parser.add_argument("--log-mlflow", action="store_true")
     parser.add_argument("--run-name", default="late-arch-rg-08-women-routed-round-group")
+    parser.add_argument(
+        "--include-tourney-elo",
+        action="store_true",
+        help="Include tournament-only Elo differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-elo-momentum",
+        action="store_true",
+        help="Include Elo momentum differential from DayNum-115 to pre-tournament Elo.",
+    )
+    parser.add_argument(
+        "--include-pythag",
+        action="store_true",
+        help="Include Pythagorean expectancy differential as an extra feature.",
+    )
     return parser
 
 
@@ -45,6 +66,45 @@ def main() -> int:
     args = _build_parser().parse_args()
     context = load_frozen_women_context(args.data_dir)
     feature_table = context.training.copy()
+    feature_cols = ["seed_diff", "elo_diff"]
+    if args.include_tourney_elo:
+        tourney_elo = compute_tournament_only_elo_ratings(context.results, seeds=context.seeds)
+        feature_table = attach_secondary_elo_features(
+            feature_table,
+            tourney_elo,
+            prefix="tourney_elo",
+        )
+        feature_cols.append("tourney_elo_diff")
+    if args.include_elo_momentum:
+        elo_momentum = compute_elo_momentum_features(
+            context.regular_season,
+            mid_day_cutoff=115,
+            end_day_cutoff=134,
+            initial_rating=WOMEN_ELO_PARAMS["initial_rating"],
+            k_factor=WOMEN_ELO_PARAMS["k_factor"],
+            home_advantage=WOMEN_ELO_PARAMS["home_advantage"],
+            season_carryover=WOMEN_ELO_PARAMS["season_carryover"],
+            scale=WOMEN_ELO_PARAMS["scale"],
+            mov_alpha=WOMEN_ELO_PARAMS["mov_alpha"],
+            weight_regular=WOMEN_ELO_PARAMS["weight_regular"],
+        )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
+        feature_table = attach_secondary_elo_features(
+            feature_table,
+            elo_momentum,
+            prefix="elo_momentum",
+        )
+        feature_cols.append("elo_momentum_diff")
+    if args.include_pythag:
+        pythag = build_team_season_summary(context.regular_season)[
+            ["Season", "TeamID", "pythag_expectancy"]
+        ]
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            pythag,
+            feature_name="pythag_expectancy",
+            diff_name="pythag_diff",
+        )
+        feature_cols.append("pythag_diff")
 
     output_dir = args.output_dir / "w_routed_round_group"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +114,11 @@ def main() -> int:
             index=False,
         )
 
-    summary = _validate_holdouts(feature_table, holdout_seasons=args.holdout_seasons)
+    summary = _validate_holdouts(
+        feature_table,
+        holdout_seasons=args.holdout_seasons,
+        feature_cols=feature_cols,
+    )
     validation_artifacts = save_validation_artifacts(summary, output_dir=output_dir / "validation")
 
     latest_holdout = max(args.holdout_seasons)
@@ -65,7 +129,47 @@ def main() -> int:
         context.elo_ratings,
         league="W",
     )
-    infer_frame = _score_inference_frame(feature_table, infer_frame, season=latest_holdout)
+    if args.include_tourney_elo:
+        tourney_elo = compute_tournament_only_elo_ratings(context.results, seeds=context.seeds)
+        infer_frame = attach_secondary_elo_features(
+            infer_frame,
+            tourney_elo,
+            prefix="tourney_elo",
+        )
+    if args.include_elo_momentum:
+        elo_momentum = compute_elo_momentum_features(
+            context.regular_season,
+            mid_day_cutoff=115,
+            end_day_cutoff=134,
+            initial_rating=WOMEN_ELO_PARAMS["initial_rating"],
+            k_factor=WOMEN_ELO_PARAMS["k_factor"],
+            home_advantage=WOMEN_ELO_PARAMS["home_advantage"],
+            season_carryover=WOMEN_ELO_PARAMS["season_carryover"],
+            scale=WOMEN_ELO_PARAMS["scale"],
+            mov_alpha=WOMEN_ELO_PARAMS["mov_alpha"],
+            weight_regular=WOMEN_ELO_PARAMS["weight_regular"],
+        )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
+        infer_frame = attach_secondary_elo_features(
+            infer_frame,
+            elo_momentum,
+            prefix="elo_momentum",
+        )
+    if args.include_pythag:
+        pythag = build_team_season_summary(context.regular_season)[
+            ["Season", "TeamID", "pythag_expectancy"]
+        ]
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            pythag,
+            feature_name="pythag_expectancy",
+            diff_name="pythag_diff",
+        )
+    infer_frame = _score_inference_frame(
+        feature_table,
+        infer_frame,
+        season=latest_holdout,
+        feature_cols=feature_cols,
+    )
     infer_frame["ID"] = infer_rows["ID"].to_numpy()
 
     bracket = compute_bracket_diagnostics(
@@ -79,7 +183,7 @@ def main() -> int:
     bracket_artifacts = save_bracket_artifacts(bracket, output_dir=output_dir / "bracket")
 
     if args.log_mlflow:
-        _log_mlflow_run(args, summary, validation_artifacts, bracket_artifacts)
+        _log_mlflow_run(args, summary, validation_artifacts, bracket_artifacts, feature_cols)
 
     print(summary.per_season_metrics.to_string(index=False))
     print(
@@ -95,6 +199,7 @@ def _validate_holdouts(
     frame: pd.DataFrame,
     *,
     holdout_seasons: list[int],
+    feature_cols: list[str],
     train_min_games: int = 50,
 ) -> ValidationSummary:
     work = frame.loc[frame["outcome"].notna()].copy()
@@ -110,7 +215,12 @@ def _validate_holdouts(
                 f"minimum required is {train_min_games}."
             )
 
-        pred = _score_with_routed_models(train, valid, season=holdout_season)
+        pred = _score_with_routed_models(
+            train,
+            valid,
+            season=holdout_season,
+            feature_cols=feature_cols,
+        )
         pred_frame = pd.DataFrame(
             {
                 "Season": valid["Season"].to_numpy(),
@@ -153,9 +263,10 @@ def _score_inference_frame(
     infer_frame: pd.DataFrame,
     *,
     season: int,
+    feature_cols: list[str],
 ) -> pd.DataFrame:
     train = frame.loc[frame["Season"] < season].copy()
-    pred = _score_with_routed_models(train, infer_frame, season=season)
+    pred = _score_with_routed_models(train, infer_frame, season=season, feature_cols=feature_cols)
     scored = infer_frame.copy()
     scored["Pred"] = pred
     return scored
@@ -166,12 +277,13 @@ def _score_with_routed_models(
     target_frame: pd.DataFrame,
     *,
     season: int,
+    feature_cols: list[str],
 ) -> pd.Series:
     routed_preds: dict[str, pd.Series] = {}
-    fallback_model = build_logistic_pipeline(FEATURE_COLS)
-    fallback_model.fit(train_frame[FEATURE_COLS], train_frame["outcome"].astype(int))
+    fallback_model = build_logistic_pipeline(feature_cols)
+    fallback_model.fit(train_frame[feature_cols], train_frame["outcome"].astype(int))
     fallback_pred = pd.Series(
-        fallback_model.predict_proba(target_frame[FEATURE_COLS])[:, 1],
+        fallback_model.predict_proba(target_frame[feature_cols])[:, 1],
         index=target_frame.index,
         dtype=float,
     )
@@ -180,10 +292,10 @@ def _score_with_routed_models(
         group_train = train_frame.loc[train_frame["round_group"] == round_group].copy()
         if group_train.empty:
             continue
-        model = build_logistic_pipeline(FEATURE_COLS)
-        model.fit(group_train[FEATURE_COLS], group_train["outcome"].astype(int))
+        model = build_logistic_pipeline(feature_cols)
+        model.fit(group_train[feature_cols], group_train["outcome"].astype(int))
         routed_preds[round_group] = pd.Series(
-            model.predict_proba(target_frame[FEATURE_COLS])[:, 1],
+            model.predict_proba(target_frame[feature_cols])[:, 1],
             index=target_frame.index,
             dtype=float,
         )
@@ -198,6 +310,38 @@ def _score_with_routed_models(
     )
 
 
+def _attach_team_scalar_feature(
+    frame: pd.DataFrame,
+    team_feature: pd.DataFrame,
+    *,
+    feature_name: str,
+    diff_name: str,
+) -> pd.DataFrame:
+    enriched = (
+        frame.merge(
+            team_feature.rename(
+                columns={"TeamID": "LowTeamID", feature_name: f"low_{feature_name}"}
+            ),
+            on=["Season", "LowTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+        .merge(
+            team_feature.rename(
+                columns={"TeamID": "HighTeamID", feature_name: f"high_{feature_name}"}
+            ),
+            on=["Season", "HighTeamID"],
+            how="left",
+            validate="many_to_one",
+        )
+    )
+    enriched[diff_name] = (
+        enriched[f"low_{feature_name}"].astype(float)
+        - enriched[f"high_{feature_name}"].astype(float)
+    )
+    return enriched
+
+
 def _group_brier(frame: pd.DataFrame, round_group: str) -> float | None:
     mask = frame["round_group"] == round_group
     if not mask.any():
@@ -210,6 +354,7 @@ def _log_mlflow_run(
     summary: ValidationSummary,
     validation_artifacts,
     bracket_artifacts,
+    feature_cols: list[str],
 ) -> None:
     tags = {
         "hypothesis": (
@@ -227,8 +372,11 @@ def _log_mlflow_run(
         mlflow.log_params(
             {
                 "holdout_seasons": ",".join(str(season) for season in args.holdout_seasons),
-                "features": ",".join(FEATURE_COLS),
+                "features": ",".join(feature_cols),
                 "round_groups": ",".join(ROUND_GROUPS),
+                "include_tourney_elo": str(args.include_tourney_elo).lower(),
+                "include_elo_momentum": str(args.include_elo_momentum).lower(),
+                "include_pythag": str(args.include_pythag).lower(),
             }
         )
         mlflow.log_metrics(

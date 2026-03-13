@@ -29,11 +29,14 @@ def test_build_team_season_summary_returns_expected_metrics() -> None:
     summary = build_team_season_summary(regular)
     win_pct_map = summary.set_index("TeamID")["win_pct"].to_dict()
     margin_map = summary.set_index("TeamID")["avg_margin"].to_dict()
+    pythag_map = summary.set_index("TeamID")["pythag_expectancy"].to_dict()
 
     assert win_pct_map[10] == pytest.approx(0.5)
     assert win_pct_map[20] == pytest.approx(0.5)
     assert margin_map[10] == pytest.approx(0.0)
     assert margin_map[20] == pytest.approx(0.0)
+    assert 0.0 < pythag_map[10] < 1.0
+    assert 0.0 < pythag_map[20] < 1.0
 
 
 def test_build_phase_ab_team_features_merges_phase_a_and_b_inputs() -> None:
@@ -198,6 +201,7 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "avg_margin": [12.0, 6.0],
             "avg_score": [78.0, 70.0],
             "avg_points_allowed": [66.0, 64.0],
+            "pythag_expectancy": [0.75, 0.56],
             "elo": [1600.0, 1500.0],
             "tempo": [70.0, 68.0],
             "off_eff": [112.0, 104.0],
@@ -206,6 +210,8 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "adj_off_eff": [111.0, 103.0],
             "adj_def_eff": [91.0, 97.0],
             "adj_net_eff": [20.0, 6.0],
+            "tourney_elo": [1525.0, 1465.0],
+            "elo_momentum": [45.0, -10.0],
             "ridge_strength": [8.0, -4.0],
             "espn_four_factor_strength": [1.2, -0.3],
             "espn_rotation_stability": [0.8, -0.1],
@@ -241,8 +247,11 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
     assert feature_table["elo_diff"].tolist() == [100.0]
     assert feature_table["win_pct_diff"].iloc[0] == pytest.approx(0.2)
     assert feature_table["def_eff_diff"].iloc[0] == pytest.approx(6.0)
+    assert feature_table["pythag_diff"].iloc[0] == pytest.approx(0.19)
     assert feature_table["massey_rank_diff"].iloc[0] == pytest.approx(20.0)
     assert feature_table["adj_qg_diff"].iloc[0] == pytest.approx(14.0)
+    assert feature_table["tourney_elo_diff"].iloc[0] == pytest.approx(60.0)
+    assert feature_table["elo_momentum_diff"].iloc[0] == pytest.approx(55.0)
     assert feature_table["ridge_strength_diff"].iloc[0] == pytest.approx(12.0)
     assert feature_table["espn_four_factor_strength_diff"].iloc[0] == pytest.approx(1.5)
     assert feature_table["espn_rotation_stability_diff"].iloc[0] == pytest.approx(0.9)
@@ -282,6 +291,7 @@ def test_build_phase_ab_tourney_features_compute_women_hca_adj_qg_diff() -> None
             "avg_margin": [12.0, 6.0],
             "avg_score": [78.0, 70.0],
             "avg_points_allowed": [66.0, 64.0],
+            "pythag_expectancy": [0.75, 0.56],
             "elo": [1600.0, 1500.0],
             "tempo": [70.0, 68.0],
             "off_eff": [112.0, 104.0],
