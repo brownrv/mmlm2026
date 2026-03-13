@@ -29,6 +29,64 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-ARCH-RG-08: routed women `R1` vs `R2+` model
+
+Status: Completed
+
+Hypothesis:
+- A true routed women model with separate `R1` and `R2+` training paths will improve held-out flat Brier over the unified `ARCH-04B` baseline.
+
+Dependencies:
+- frozen_models:women_arch04b_tuned_elo
+- diagnostics:frozen_historical_performance
+- arch-rg
+
+MLflow:
+- Run name: `late-arch-rg-08-women-routed-round-group`
+
+Result:
+- Added `scripts/run_women_routed_round_group_model.py` to train separate women logistic paths for `R1` and `R2+`, with round-group routing at validation and inference time plus a unified fallback for unroutable rows.
+- The routed challenger scored `flat_brier = 0.131950` on the 2023-2024 held-out window, narrowly beating the frozen women leader `ARCH-04B` at `0.132193`.
+- The 2025 sanity check also passed with `flat_brier = 0.106055` and `log_loss = 0.334307`, so this challenger is cleared to replace `ARCH-04B` as the active women leader.
+
+Re-test if:
+- The routed women model fails the 2025 sanity check.
+- A later women challenger beats this routed model on the same held-out protocol.
+
+Related:
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [docs/roadmaps/PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
+## 2026-03-13 — LATE-ARCH-RG-07: routed men `R1` vs `R2+` model
+
+Status: Completed
+
+Hypothesis:
+- A true routed men model with separate `R1` and `R2+` training paths will improve held-out flat Brier where round-group-specific calibration alone did not.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- diagnostics:frozen_historical_performance
+- arch-rg
+
+MLflow:
+- Run name: `late-arch-rg-07-men-routed-round-group`
+
+Result:
+- Added `scripts/run_men_routed_round_group_model.py` to train separate men margin-regression paths for `R1` and `R2+`, with round-group routing at validation and inference time plus a unified fallback for unroutable rows.
+- The routed challenger scored `flat_brier = 0.197102` on the 2023-2024 held-out window, which still did not beat the frozen men leader at `0.195566`.
+- Conclusion: the men round-group split is real enough to justify analysis, but a full routed model still did not improve on the frozen men reference path. Do not promote it.
+
+Re-test if:
+- The men latent strength layer changes materially before submission.
+- A later routed men challenger uses external data or a different upstream rating family.
+
+Related:
+- [scripts/run_men_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_routed_round_group_model.py)
+- [docs/roadmaps/PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
 ## 2026-03-13 — ARCH-04C: ARCH-04B + women_hca_adj_qg_diff challenger
 
 Status: Completed

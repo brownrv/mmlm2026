@@ -387,7 +387,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
 - men-specific margin regression, probability conversion, and dynamic temperature scaling
 
-**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `ARCH-04B` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-ARCH-RG-08` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
 
 ### 4.4 Round-Group Modeling Strategy
 
@@ -421,9 +421,10 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 - Men: generalization-tuned reference-style margin model
   - MLflow run: `337d3b992b884dbb800c078561d37622`
   - 2023–2024 flat Brier: `0.195566`
-- Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
-  - MLflow run: `ba0a02b8c8bc404089bdd2de7fe9a917`
-  - 2023–2024 flat Brier: `0.132193`
+- Women: `LATE-ARCH-RG-08` routed `R1` vs `R2+` women model
+  - MLflow run name: `late-arch-rg-08-women-routed-round-group`
+  - 2023–2024 flat Brier: `0.131950`
+  - 2025 sanity-check run name: `val-01-2025-holdout-women-routed-round-group`
 
 #### Tier 1 — Highest-value late challengers
 
@@ -451,6 +452,27 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 | 10 | LATE-EMB-02 | Women team embeddings from regular-season game graph | W | Medium | High | Same concept, but women likely benefit more first from better upstream data/rating construction |
 | 11 | LATE-NN-01 | End-to-end shallow neural tournament model | M+W | Low-Medium | High | Least attractive before deadline; calibration and overfitting risk are high for the likely marginal upside |
 
+#### Tier 4 — Notebook-derived feature and training scheme challengers
+
+All challengers in this tier use Kaggle competition data only (no external datasets required). Sourced from `notebooks/0-1471-stage-2-metastack-madness-engine-eda.ipynb`. Leakage policy is identical to all other challengers: features computed using only data available before DayNum 134 of the target season, from seasons strictly before the target year.
+
+| Rank | ID | Challenger | League | Expected Payoff | Effort | Why it is next |
+|---|---|---|---|---|---|---|
+| 12 | LATE-FEAT-21 | Tournament-only Elo | M+W | Medium-High | Low | Second Elo pass on historical tourney games only (separate K-factor, lower season reversion); existing Elo infrastructure reusable; distinct persistent-pedigree hypothesis from regular-season Elo |
+| 13 | LATE-FEAT-22 | Elo momentum (end-of-season − DayNum-115 mid) | M+W | Medium | Low | Single derived column from existing Elo at a mid-season breakpoint; tests whether rating trajectory predicts tournament outcomes beyond end-of-season level |
+| 14 | LATE-FEAT-26 | Pythagorean expectancy | M+W | Medium | Low | Classic score-based win estimator `pts^10.25 / (pts^10.25 + allowed^10.25)`; diverges from W% for teams winning or losing many close games; trivial to compute from existing results |
+| 15 | LATE-FEAT-23 | Seed-Elo gap (over/under-seeded) | M+W | Medium | Low | Cross-signal: `actual_elo − (1750 − (seed−1) × 25)`; teams whose Elo substantially exceeds what their seed implies may be systematically mispriced by seed-based models |
+| 16 | LATE-ARCH-DW-01 | Decay-weighted training | M+W | Medium | Low-Medium | Exponential recency weighting (decay per season backwards); training scheme modifier that applies to any existing model without feature changes; §2.1 notes this as a possibility but no experiment exists |
+| 17 | LATE-FEAT-25 | Season momentum (H2 − H1 net rating) | M+W | Medium | Low-Medium | Net rating in second half of season minus first half; captures improving vs. declining teams across the full season arc; complements recent-form last-10 which only covers the tail |
+| 18 | LATE-ARCH-META-01 | Logit-Ridge meta-learner | M+W | Medium | Low | Replace no-intercept logistic in COMBO-03/04 Tier 2 with Ridge regression in logit space; logit transform emphasizes tail calibration where Brier loss is highest; alpha tuned via leave-seasons-out CV |
+| 19 | LATE-FEAT-30 | Massey PCA and disagreement | M | Medium | Medium | PCA on all Massey systems to extract orthogonal consensus components (PC1–PC5); `massey_std` captures ranking disagreement as a calibration uncertainty proxy; men only (Massey not available for women) |
+| 20 | LATE-FEAT-28 | Win quality bins (close ≤5 pt, blowout ≥15 pt) | M+W | Low-Medium | Low | Extends CloseWR work (FEAT-14/15 at ≤1/≤3 thresholds); ≤5 captures broader clutch performance; blowout-win rate ≥15 is entirely new and tests whether dominant teams are undervalued by margin-only features |
+| 21 | LATE-FEAT-24 | Late-5 form with offensive/defensive split | M+W | Medium | Medium | Separate offensive and defensive net rating over the final 5 pre-tournament games (DayNum ≥ 115); hypothesis: defense travels better than offense to neutral sites; distinct from last-10 window (B3) |
+| 22 | LATE-FEAT-27 | Road and neutral-site performance profiles | M+W | Medium | Medium | Disaggregate regular-season games by WLoc ('H'/'A'/'N'); compute win%, margin, and game count for road and neutral contexts separately; neutral-site win% is the most tournament-relevant form signal |
+| 23 | LATE-FEAT-29 | Conference percentile rank | M+W | Low-Medium | Medium | Team's percentile rank within its own conference by net rating; distinguishes a dominant mid-major from a fringe power-conference team better than raw conference average strength (FEAT-10) |
+| 24 | LATE-FEAT-31 | Tournament program pedigree | M+W | Low-Medium | Low-Medium | 5-year lookback: NCAA tournament appearances count, average seed, best seed; team-level organizational experience beyond coach features (FEAT-07); requires only historical `{M\|W}NCAATourneySeeds.csv` |
+| 25 | LATE-ARCH-CB-01 | CatBoost base learner | M+W | Low-Medium | Medium | Additional base learner diversity beyond LightGBM/XGBoost; ordered boosting and built-in categorical handling; reference notebook shows CatBoost as highest meta-weight member (0.359 for men); only warranted if diversity audit shows high OOF correlation among current ensemble members |
+
 #### Dataset-to-challenger mapping
 
 | Dataset | Most useful challenger tasks | Recommended first use |
@@ -469,6 +491,14 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 6. `LATE-EXT-01` / `LATE-EXT-02` — benchmark-guided men/women gap analysis and targeted challenger design
 7. `LATE-EXT-03` — ESPN-derived advanced strength/situational features
 8. `LATE-EMB-01` / `LATE-EMB-02` only if the earlier, simpler challenger classes stall
+9. `LATE-FEAT-21` — tournament-only Elo (low effort, new persistent-pedigree signal)
+10. `LATE-FEAT-22` + `LATE-FEAT-26` + `LATE-FEAT-23` — Elo momentum, Pythagorean expectancy, seed-Elo gap (bundle: all derived from existing Elo/seed/score data)
+11. `LATE-ARCH-DW-01` — decay-weighted training test on current best model per league
+12. `LATE-ARCH-META-01` — logit-Ridge meta-learner swap in COMBO-03/04
+13. `LATE-FEAT-25` + `LATE-FEAT-28` — season momentum and win quality bins
+14. `LATE-FEAT-30` — Massey PCA and disagreement features (men only)
+15. `LATE-FEAT-24` + `LATE-FEAT-27` + `LATE-FEAT-29` + `LATE-FEAT-31` — late-5 form, neutral-site profiles, conference percentile, program pedigree (if time allows)
+16. `LATE-ARCH-CB-01` — CatBoost base learner (only if diversity audit shows high OOF correlation among current ensemble members)
 
 **Execution note:** `LATE-EXT-01` and `LATE-EXT-02` are benchmark-guided challenger-design tasks, not standalone promotion criteria. They exist to identify high-leverage cells and define the next testable challenger; they do not replace played-game held-out flat-Brier model selection.
 
@@ -734,10 +764,10 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
   - 2023-2024 flat Brier: `0.195566`
   - 2025 holdout run: `a11c60d33cde4fd68f7852fc65dda1db`
 
-- Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
-  - MLflow run: `ba0a02b8c8bc404089bdd2de7fe9a917`
-  - 2023-2024 flat Brier: `0.132193`
-  - 2025 holdout run: `f6eac553495949a5805c84fb4cdef757`
+- Women: `LATE-ARCH-RG-08` routed `R1` vs `R2+` women model
+  - MLflow run name: `late-arch-rg-08-women-routed-round-group`
+  - 2023-2024 flat Brier: `0.131950`
+  - 2025 holdout run name: `val-01-2025-holdout-women-routed-round-group`
 
 **Gate 3 operating rule:** these are the submission-default models unless a later Gate 3 challenger beats them on the same held-out flat-Brier protocol. No model is promoted during Stage 2 inference preparation for subjective reasons, additional complexity, or leaderboard curiosity alone.
 
@@ -757,7 +787,7 @@ Before each submission:
 If the Stage 2 pipeline breaks after Selection Sunday:
 1. First fall back to the frozen leaders already selected in this plan:
    - men: generalization-tuned reference-style margin model
-   - women: `ARCH-04B`
+   - women: `LATE-ARCH-RG-08`
 2. If the frozen-leader path itself is unavailable operationally, fall back to the emergency minimum viable baselines:
    - men: seed-diff logistic baseline
    - women: seed-plus-Elo logistic baseline
@@ -798,6 +828,9 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-EMB-01 | Team-embedding challenger (M) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen men features | M | Learned team embeddings capture matchup structure missed by scalar ratings | P3 |
 | LATE-EMB-02 | Team-embedding challenger (W) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen women features | W | Same, women's data | P3 |
 | LATE-NN-01 | End-to-end shallow neural model | Shallow MLP | Best available late-challenger feature set | M+W | A carefully regularized shallow NN improves on linear models without calibration collapse | P4 |
+| LATE-ARCH-DW-01 | Decay-weighted training (M+W) | Any base learner with exponential sample weights | Current best feature family per league | M+W | Recency-weighted training (§2.1 notes this as a possibility but no experiment exists) reduces the influence of older seasons and may improve generalization; decay tested at 0.9 (men) and 0.93 (women) | P2 |
+| LATE-ARCH-META-01 | Logit-Ridge meta-learner (M+W) | Ridge regression in logit space on OOF base learner probabilities | OOF logits from current best ensemble members | M+W | Ridge in log-odds space emphasizes tail calibration where Brier loss is steepest; alpha tuned via leave-seasons-out CV; alternative to no-intercept logistic in COMBO-03/04 Tier 2 | P2 |
+| LATE-ARCH-CB-01 | CatBoost base learner (M+W) | CatBoost | Current best feature family per league | M+W | Ordered boosting and categorical handling adds diverse base learner predictions; reference notebook shows CatBoost as highest meta-weight ensemble member (0.359 for men); warranted only if diversity audit shows high OOF correlation among current members | P3 |
 
 ### 9.2 Feature Experiments
 
@@ -823,6 +856,17 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-FEAT-18 | ESPN-derived four-factor ratings | eFG, TOV, ORB, FTR composites | `LATE-RATE-01` / `LATE-RATE-02` | Richer team quality estimates from ESPN box scores improve latent strength modeling | P1 |
 | LATE-FEAT-19 | ESPN-derived player-availability / rotation proxies | minutes continuity, top-player usage, lineup stability | `LATE-RATE-01` / `LATE-RATE-02` | Lineup continuity and high-usage player context add signal beyond team aggregates | P2 |
 | LATE-FEAT-20 | Reference-model delta diagnostics | benchmark_prob_delta, benchmark_bucket_delta (diagnostic-only; not trainable features) | `LATE-EXT-01` / `LATE-EXT-02` | Systematic differences from the benchmark identify specific cells worth modeling, even if the benchmark fields themselves are not used directly for training | P2 |
+| LATE-FEAT-21 | Tournament-only Elo (M+W) | tourney_elo_diff: separate Elo system fit only on past tournament games (K=32, season reversion=0.15) | Frozen leader challenger | Tournament-game Elo captures clutch/pressure performance signal orthogonal to full-season Elo; validated as additive in reference notebook | P2 |
+| LATE-FEAT-22 | Elo momentum (M+W) | elo_momentum_diff: change in Elo from mid-season (DayNum 115) to end of regular season | Frozen leader challenger | Teams trending up entering the tournament outperform static end-of-season Elo; momentum computed from DayNum-115 Elo delta; DayNum < 134 cutoff is respected | P2 |
+| LATE-FEAT-23 | Seed-Elo gap (M+W) | seed_elo_gap_diff: actual Elo minus expected Elo for that seed line | Frozen leader challenger | Negative gap (team over-seeded) signals regression risk; positive gap (team under-seeded) signals upset potential; collinear with seed_diff and elo_diff individually but their interaction is unique | P2 |
+| LATE-FEAT-24 | Late-season form O/D split (M+W) | late_form_off_diff, late_form_def_diff: last-5-game offensive and defensive efficiency separately (not combined net) | Frozen leader challenger | Splitting form into offensive and defensive components captures teams riding hot offense into March versus teams winning on defense; correlates differently with upset outcomes than combined net efficiency | P2 |
+| LATE-FEAT-25 | Season momentum net efficiency (M+W) | season_momentum_diff: second-half net rating minus first-half net rating (split at midseason) | Frozen leader challenger | Teams improving across the season outperform flat or declining teams at tournament time; computed from regular-season splits before DayNum 134 cutoff | P3 |
+| LATE-FEAT-26 | Pythagorean expectancy (M+W) | pythag_diff: (pts_for^10.25) / (pts_for^10.25 + pts_against^10.25) differential | Frozen leader challenger | Pythagorean win expectancy (exponent 10.25) provides a more stable strength estimate than W% alone; additive over seed and Elo in reference notebook | P2 |
+| LATE-FEAT-27 | Road/neutral-site performance profiles (M+W) | road_win_pct_diff, neutral_net_eff_diff | Frozen leader challenger | Tournament games are neutral-site; teams with higher neutral-site net efficiency or road win rates better approximate tournament conditions than home-inflated ratings | P2 |
+| LATE-FEAT-28 | Win quality bins (M+W) | close_win_pct_diff (margin ≤5), blowout_win_pct_diff (margin ≥15) | Frozen leader challenger | Close-win rate signals resilience in tight games; blowout rate signals dominance; both are predictive in rounds where seed lines are tight — requires DayNum < 134 for cutoff compliance | P3 |
+| LATE-FEAT-29 | Conference percentile rank (M+W) | conf_pct_rank_diff: team's within-conference rank percentile | Frozen leader challenger | Conference percentile rank normalizes for conference depth and correlates with tournament seeding committee adjustments; lower collinearity with raw Elo than raw conference rank | P3 |
+| LATE-FEAT-30 | Massey PCA + disagreement (M) | massey_pca1_diff, massey_disagreement_diff: first PC of Massey system ratings and cross-system std | Frozen leader challenger (men only; women Massey data is sparse) | First PC captures consensus latent strength across 100+ systems; disagreement std captures uncertainty orthogonal to consensus; complement FEAT-04 single-system rank | P2 |
+| LATE-FEAT-31 | Tournament program pedigree (M+W) | pedigree_score_diff: 5-year tournament win rate weighted by round reached | Frozen leader challenger | Program pedigree captures institutional tournament experience beyond coaching tenure; 5-year window balances recency and sample size; computed from historical tournament results (no leakage by construction) | P3 |
 
 ### 9.3 Combination and Validation Experiments
 
@@ -875,7 +919,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
 - [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
 - [ ] Men frozen leader: generalization-tuned reference-style margin model
-- [ ] Women frozen leader: `ARCH-04B`
+- [ ] Women frozen leader: `LATE-ARCH-RG-08`
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
 - [ ] Per-bucket and `R1/R2+` Brier decomposition reviewed; no unexpected degradation on guaranteed `R1` games

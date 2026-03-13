@@ -15,6 +15,27 @@ class RoundGroupCalibrationState:
     fallback_alpha: float
 
 
+def route_group_predictions(
+    predictions_by_group: dict[str, pd.Series],
+    round_groups: pd.Series,
+    *,
+    fallback: pd.Series | None = None,
+) -> pd.Series:
+    """Select the appropriate prediction vector for each row by round group."""
+    result = pd.Series(index=round_groups.index, dtype=float)
+    for group_name, predictions in predictions_by_group.items():
+        mask = round_groups == group_name
+        if mask.any():
+            result.loc[mask] = predictions.loc[mask].astype(float)
+
+    remaining = result.isna()
+    if remaining.any():
+        if fallback is None:
+            raise ValueError("Round-group routing left unmatched rows without a fallback series.")
+        result.loc[remaining] = fallback.loc[remaining].astype(float)
+    return result
+
+
 def apply_round_group_blend(
     p_raw: pd.Series,
     p_elo: pd.Series,
