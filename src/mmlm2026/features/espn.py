@@ -6,6 +6,23 @@ from typing import cast
 import pandas as pd
 
 
+def build_espn_women_four_factor_strength_features(
+    *,
+    season: int,
+    boxscores: pd.DataFrame,
+    regular_season_results: pd.DataFrame,
+    team_spellings: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build season-level women four-factor strength features from ESPN boxscores."""
+    return _build_espn_four_factor_strength_features(
+        season=season,
+        boxscores=boxscores,
+        regular_season_results=regular_season_results,
+        team_spellings=team_spellings,
+        team_id_col="WTeamID",
+    )
+
+
 def build_espn_men_four_factor_strength_features(
     *,
     season: int,
@@ -13,7 +30,25 @@ def build_espn_men_four_factor_strength_features(
     regular_season_results: pd.DataFrame,
     team_spellings: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build season-level men four-factor strength features from ESPN boxscores.
+    """Build season-level men four-factor strength features from ESPN boxscores."""
+    return _build_espn_four_factor_strength_features(
+        season=season,
+        boxscores=boxscores,
+        regular_season_results=regular_season_results,
+        team_spellings=team_spellings,
+        team_id_col="MTeamID",
+    )
+
+
+def _build_espn_four_factor_strength_features(
+    *,
+    season: int,
+    boxscores: pd.DataFrame,
+    regular_season_results: pd.DataFrame,
+    team_spellings: pd.DataFrame,
+    team_id_col: str,
+) -> pd.DataFrame:
+    """Build season-level four-factor strength features from ESPN boxscores.
 
     ESPN games are kept only if they can be matched cleanly to Kaggle regular-season
     results for the same season. This avoids using postseason-only rows.
@@ -41,7 +76,7 @@ def build_espn_men_four_factor_strength_features(
             f"Regular season results missing required columns: {sorted(missing_results)}"
         )
 
-    mapping = _build_unique_espn_mapping(team_spellings, team_id_col="MTeamID")
+    mapping = _build_unique_espn_mapping(team_spellings, team_id_col=team_id_col)
     aggregated = (
         boxscores.groupby(["gid", "tid"], as_index=False)
         .agg(
@@ -250,6 +285,58 @@ def load_espn_men_four_factor_strength_features(
         if season_results.empty:
             continue
         season_features = build_espn_men_four_factor_strength_features(
+            season=season,
+            boxscores=boxscores,
+            regular_season_results=season_results,
+            team_spellings=team_spellings,
+        )
+        if not season_features.empty:
+            frames.append(season_features)
+
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "Season",
+                "TeamID",
+                "espn_efg",
+                "espn_tov_rate",
+                "espn_orb_pct",
+                "espn_ftr",
+                "espn_opp_efg",
+                "espn_opp_tov_rate",
+                "espn_opp_orb_pct",
+                "espn_opp_ftr",
+                "espn_four_factor_strength",
+            ]
+        )
+    return (
+        pd.concat(frames, ignore_index=True)
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+
+
+def load_espn_women_four_factor_strength_features(
+    *,
+    espn_root: Path,
+    seasons: list[int],
+    regular_season_results: pd.DataFrame,
+    team_spellings_path: Path,
+) -> pd.DataFrame:
+    """Load and aggregate ESPN-derived women four-factor strength features."""
+    team_spellings = pd.read_csv(team_spellings_path, encoding="latin1")
+    frames: list[pd.DataFrame] = []
+    for season in seasons:
+        boxscores_path = espn_root / str(season) / "boxscores.parquet"
+        if not boxscores_path.exists():
+            continue
+        boxscores = pd.read_parquet(boxscores_path)
+        season_results = regular_season_results.loc[
+            regular_season_results["Season"] == season
+        ].copy()
+        if season_results.empty:
+            continue
+        season_features = build_espn_women_four_factor_strength_features(
             season=season,
             boxscores=boxscores,
             regular_season_results=season_results,

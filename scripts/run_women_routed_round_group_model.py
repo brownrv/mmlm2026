@@ -21,6 +21,7 @@ from mmlm2026.features.elo import (
     compute_elo_momentum_features,
     compute_tournament_only_elo_ratings,
 )
+from mmlm2026.features.espn import load_espn_women_four_factor_strength_features
 from mmlm2026.features.primary import build_season_momentum_features, build_team_season_summary
 from mmlm2026.submission.frozen_models import (
     WOMEN_ELO_PARAMS,
@@ -44,6 +45,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-features", action="store_true")
     parser.add_argument("--log-mlflow", action="store_true")
     parser.add_argument("--run-name", default="late-arch-rg-08-women-routed-round-group")
+    parser.add_argument(
+        "--espn-root",
+        type=Path,
+        default=Path("data/processed/espn/womens-college-basketball"),
+    )
+    parser.add_argument(
+        "--team-spellings-path",
+        type=Path,
+        default=Path("data/TeamSpellings.csv"),
+    )
     parser.add_argument(
         "--include-tourney-elo",
         action="store_true",
@@ -71,6 +82,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Include second-half minus first-half average margin "
             "differential as an extra feature."
         ),
+    )
+    parser.add_argument(
+        "--include-espn-four-factor",
+        action="store_true",
+        help="Include ESPN-derived women four-factor strength differential.",
     )
     return parser
 
@@ -131,6 +147,25 @@ def main() -> int:
             diff_name="season_momentum_diff",
         )
         feature_cols.append("season_momentum_diff")
+    if args.include_espn_four_factor:
+        seasons = sorted(
+            season
+            for season in feature_table["Season"].drop_duplicates().astype(int).tolist()
+            if season <= max(args.holdout_seasons)
+        )
+        espn_features = load_espn_women_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=context.regular_season,
+            team_spellings_path=args.team_spellings_path,
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            espn_features[["Season", "TeamID", "espn_four_factor_strength"]],
+            feature_name="espn_four_factor_strength",
+            diff_name="espn_four_factor_strength_diff",
+        )
+        feature_cols.append("espn_four_factor_strength_diff")
 
     output_dir = args.output_dir / "w_routed_round_group"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -199,6 +234,24 @@ def main() -> int:
             season_momentum,
             feature_name="season_momentum",
             diff_name="season_momentum_diff",
+        )
+    if args.include_espn_four_factor:
+        seasons = sorted(
+            season
+            for season in context.seeds["Season"].drop_duplicates().astype(int).tolist()
+            if season <= latest_holdout
+        )
+        espn_features = load_espn_women_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=context.regular_season,
+            team_spellings_path=args.team_spellings_path,
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            espn_features[["Season", "TeamID", "espn_four_factor_strength"]],
+            feature_name="espn_four_factor_strength",
+            diff_name="espn_four_factor_strength_diff",
         )
     infer_frame = _score_inference_frame(
         feature_table,
@@ -404,6 +457,8 @@ def _log_mlflow_run(
         "retest_if": "women routed round-group training definition changes",
         "leakage_audit": "passed",
     }
+    if args.include_espn_four_factor:
+        tags["depends_on"] += ",feature:late_feat_18_espn_four_factor_v1"
     with start_tracked_run(args.run_name, tags=tags):
         mlflow.log_params(
             {
@@ -415,6 +470,7 @@ def _log_mlflow_run(
                 "include_pythag": str(args.include_pythag).lower(),
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "include_season_momentum": str(args.include_season_momentum).lower(),
+                "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
             }
         )
         mlflow.log_metrics(

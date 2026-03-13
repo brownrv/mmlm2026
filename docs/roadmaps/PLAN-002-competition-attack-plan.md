@@ -387,7 +387,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
 - men-specific margin regression, probability conversion, and dynamic temperature scaling
 
-**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-ARCH-RG-08` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-RATE-02 v1` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
 
 ### 4.4 Round-Group Modeling Strategy
 
@@ -421,10 +421,10 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 - Men: generalization-tuned reference-style margin model
   - MLflow run: `337d3b992b884dbb800c078561d37622`
   - 2023–2024 flat Brier: `0.195566`
-- Women: `LATE-ARCH-RG-08` routed `R1` vs `R2+` women model
-  - MLflow run name: `late-arch-rg-08-women-routed-round-group`
-  - 2023–2024 flat Brier: `0.131950`
-  - 2025 sanity-check run name: `val-01-2025-holdout-women-routed-round-group`
+- Women: `LATE-RATE-02 v1` routed women + ESPN four-factor model
+  - MLflow run name: `late-rate-02-women-espn-four-factor`
+  - 2023–2024 flat Brier: `0.130427`
+  - 2025 sanity-check run name: `val-01-2025-holdout-women-late-rate-02`
 
 #### Tier 1 — Highest-value late challengers
 
@@ -764,10 +764,10 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
   - 2023-2024 flat Brier: `0.195566`
   - 2025 holdout run: `a11c60d33cde4fd68f7852fc65dda1db`
 
-- Women: `LATE-ARCH-RG-08` routed `R1` vs `R2+` women model
-  - MLflow run name: `late-arch-rg-08-women-routed-round-group`
-  - 2023-2024 flat Brier: `0.131950`
-  - 2025 holdout run name: `val-01-2025-holdout-women-routed-round-group`
+- Women: `LATE-RATE-02 v1` routed women + ESPN four-factor model
+  - MLflow run name: `late-rate-02-women-espn-four-factor`
+  - 2023-2024 flat Brier: `0.130427`
+  - 2025 holdout run name: `val-01-2025-holdout-women-late-rate-02`
 
 **Gate 3 operating rule:** these are the submission-default models unless a later Gate 3 challenger beats them on the same held-out flat-Brier protocol. No model is promoted during Stage 2 inference preparation for subjective reasons, additional complexity, or leaderboard curiosity alone.
 
@@ -919,7 +919,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
 - [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
 - [ ] Men frozen leader: generalization-tuned reference-style margin model
-- [ ] Women frozen leader: `LATE-ARCH-RG-08`
+- [ ] Women frozen leader: `LATE-RATE-02 v1`
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
 - [ ] Per-bucket and `R1/R2+` Brier decomposition reviewed; no unexpected degradation on guaranteed `R1` games

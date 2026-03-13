@@ -29,6 +29,38 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-RATE-02 v1: women ESPN four-factor latent strength
+
+Status: Completed
+
+Hypothesis:
+- A stronger women team-strength input from ESPN-derived four-factor summaries can improve the routed women leader without reopening the broader women feature stack.
+
+Dependencies:
+- frozen_models:women_routed_round_group_v1
+- dataset:espn_processed_women_v1
+- validation:late_val_07_women_routed_holdout
+
+MLflow:
+- Run name: `late-rate-02-women-espn-four-factor`
+- Run name: `val-01-2025-holdout-women-late-rate-02`
+
+Result:
+- Added `espn_four_factor_strength_diff` to the routed women `R1` vs `R2+` challenger using leakage-safe ESPN women boxscore matches against Kaggle regular-season games.
+- The 2023-2024 held-out run scored `flat_brier = 0.130427` and `log_loss = 0.400684`, beating the current routed women leader `0.131950`.
+- The 2025 sanity check also passed with `flat_brier = 0.103438`, `log_loss = 0.328220`, `r1_brier = 0.081535`, and `r2plus_brier = 0.126049`, which is better than the prior routed women sanity check `0.106055`.
+- This clears `LATE-RATE-02 v1` to replace `LATE-ARCH-RG-08` as the active women leader.
+
+Re-test if:
+- ESPN women coverage, team mapping, or matching rules change.
+- A later women challenger beats the same held-out and 2025-sanity protocol.
+
+Related:
+- [src/mmlm2026/features/espn.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/espn.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [tests/test_espn_features.py](/c:/Users/brown/Documents/GitHub/mmlm2026/tests/test_espn_features.py)
+
+---
 ## 2026-03-13 — LATE-MKT-01: men BetExplorer market-strength challenger
 
 Status: Completed
