@@ -214,6 +214,7 @@ data/*
 logs/
 mlruns/
 mlflow.db
+.ipynb_checkpoints/
 !docs/data/
 !docs/data/**
 !data/README.md
