@@ -109,6 +109,7 @@ def test_build_phase_ab_team_features_merges_phase_a_and_b_inputs() -> None:
         "adj_off_eff",
         "adj_def_eff",
         "adj_net_eff",
+        "ridge_strength",
         "close_win_pct",
         "mov_per100",
         "ast_rate",
@@ -205,6 +206,9 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "adj_off_eff": [111.0, 103.0],
             "adj_def_eff": [91.0, 97.0],
             "adj_net_eff": [20.0, 6.0],
+            "ridge_strength": [8.0, -4.0],
+            "espn_four_factor_strength": [1.2, -0.3],
+            "espn_rotation_stability": [0.8, -0.1],
             "recent_games": [10, 10],
             "recent_win_pct": [0.8, 0.5],
             "close_games": [4, 4],
@@ -239,6 +243,9 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
     assert feature_table["def_eff_diff"].iloc[0] == pytest.approx(6.0)
     assert feature_table["massey_rank_diff"].iloc[0] == pytest.approx(20.0)
     assert feature_table["adj_qg_diff"].iloc[0] == pytest.approx(14.0)
+    assert feature_table["ridge_strength_diff"].iloc[0] == pytest.approx(12.0)
+    assert feature_table["espn_four_factor_strength_diff"].iloc[0] == pytest.approx(1.5)
+    assert feature_table["espn_rotation_stability_diff"].iloc[0] == pytest.approx(0.9)
     assert feature_table["close_win_pct_diff"].iloc[0] == pytest.approx(0.5)
     assert feature_table["mov_per100_diff"].iloc[0] == pytest.approx(20.0)
     assert feature_table["ast_rate_diff"].iloc[0] == pytest.approx(0.15)

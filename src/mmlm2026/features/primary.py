@@ -14,6 +14,7 @@ from mmlm2026.features.phase_b import (
     build_margin_per_100_features,
     build_massey_consensus_features,
     build_recent_form_features,
+    build_regularized_margin_strength_features,
     build_schedule_adjusted_net_eff_features,
     build_strength_of_schedule_features,
     build_turnover_rate_features,
@@ -138,6 +139,10 @@ def build_phase_ab_team_features(
         regular_season_detailed_results,
         day_cutoff=day_cutoff,
     )
+    regularized_margin_strength = build_regularized_margin_strength_features(
+        regular_season_detailed_results,
+        day_cutoff=day_cutoff,
+    )
     women_hca_iterative_efficiency = None
     if women_hca_adjustment is not None:
         women_hca_iterative_efficiency = build_iterative_adjusted_efficiency_features(
@@ -216,6 +221,12 @@ def build_phase_ab_team_features(
         )
         .merge(
             iterative_efficiency[["Season", "TeamID", "adj_off_eff", "adj_def_eff", "adj_net_eff"]],
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+        .merge(
+            regularized_margin_strength,
             on=["Season", "TeamID"],
             how="left",
             validate="one_to_one",
@@ -565,6 +576,9 @@ def _attach_team_feature_diffs(
         "women_hca_adj_off_eff",
         "women_hca_adj_def_eff",
         "women_hca_adj_net_eff",
+        "ridge_strength",
+        "espn_four_factor_strength",
+        "espn_rotation_stability",
         "massey_system_count",
         "massey_median_rank",
     ]
@@ -648,6 +662,16 @@ def _attach_team_feature_diffs(
     if {"low_women_hca_adj_net_eff", "high_women_hca_adj_net_eff"}.issubset(merged.columns):
         merged["women_hca_adj_qg_diff"] = (
             merged["low_women_hca_adj_net_eff"] - merged["high_women_hca_adj_net_eff"]
+        )
+    if {"low_ridge_strength", "high_ridge_strength"}.issubset(merged.columns):
+        merged["ridge_strength_diff"] = merged["low_ridge_strength"] - merged["high_ridge_strength"]
+    if {"low_espn_four_factor_strength", "high_espn_four_factor_strength"}.issubset(merged.columns):
+        merged["espn_four_factor_strength_diff"] = (
+            merged["low_espn_four_factor_strength"] - merged["high_espn_four_factor_strength"]
+        )
+    if {"low_espn_rotation_stability", "high_espn_rotation_stability"}.issubset(merged.columns):
+        merged["espn_rotation_stability_diff"] = (
+            merged["low_espn_rotation_stability"] - merged["high_espn_rotation_stability"]
         )
 
     if {

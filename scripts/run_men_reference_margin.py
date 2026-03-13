@@ -21,6 +21,10 @@ from mmlm2026.evaluation.validation import (
     save_validation_artifacts,
 )
 from mmlm2026.features.elo import compute_pre_tourney_elo_ratings
+from mmlm2026.features.espn import (
+    load_espn_men_four_factor_strength_features,
+    load_espn_men_rotation_stability_features,
+)
 from mmlm2026.features.primary import (
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
@@ -45,6 +49,31 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-name", default="val-05-men-reference-margin")
     parser.add_argument("--day-cutoff", type=int, default=134)
     parser.add_argument("--season-floor", type=int, default=2004)
+    parser.add_argument(
+        "--espn-root",
+        type=Path,
+        default=Path("data/processed/espn/mens-college-basketball"),
+    )
+    parser.add_argument(
+        "--team-spellings-path",
+        type=Path,
+        default=Path("data/TeamSpellings.csv"),
+    )
+    parser.add_argument(
+        "--include-ridge-strength",
+        action="store_true",
+        help="Include ridge_strength_diff from a regularized margin rating as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-espn-four-factor",
+        action="store_true",
+        help="Include ESPN-derived four-factor strength differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-espn-rotation",
+        action="store_true",
+        help="Include ESPN-derived rotation-stability differential as an extra feature.",
+    )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
     parser.add_argument("--elo-home-advantage", type=float, default=43.0)
@@ -98,6 +127,42 @@ def main() -> int:
         day_cutoff=args.day_cutoff,
         close_game_margin_threshold=1,
     )
+    if args.include_espn_four_factor:
+        seasons = sorted(
+            season
+            for season in team_features["Season"].drop_duplicates().astype(int).tolist()
+            if season <= max(args.holdout_seasons)
+        )
+        espn_features = load_espn_men_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=regular_season_detailed,
+            team_spellings_path=args.team_spellings_path,
+        )
+        team_features = team_features.merge(
+            espn_features,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_espn_rotation:
+        seasons = sorted(
+            season
+            for season in team_features["Season"].drop_duplicates().astype(int).tolist()
+            if season <= max(args.holdout_seasons)
+        )
+        espn_rotation = load_espn_men_rotation_stability_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=regular_season_detailed,
+            team_spellings_path=args.team_spellings_path,
+        )
+        team_features = team_features.merge(
+            espn_rotation,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
     feature_table = build_phase_ab_tourney_features(
         results,
         seeds,
@@ -116,12 +181,24 @@ def main() -> int:
         "ftr_diff",
         "tov_rate_diff",
     ]
+    if args.include_ridge_strength:
+        feature_cols.append("ridge_strength_diff")
+    if args.include_espn_four_factor:
+        feature_cols.append("espn_four_factor_strength_diff")
+    if args.include_espn_rotation:
+        feature_cols.append("espn_rotation_stability_diff")
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
         "seed_diff",
         "ast_rate_diff",
     ]
+    if args.include_ridge_strength:
+        calibration_feature_cols.append("ridge_strength_diff")
+    if args.include_espn_four_factor:
+        calibration_feature_cols.append("espn_four_factor_strength_diff")
+    if args.include_espn_rotation:
+        calibration_feature_cols.append("espn_rotation_stability_diff")
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -553,6 +630,9 @@ def _log_mlflow_run(
         "depends_on": (
             "feature:feat_12_iter_adj_qg_v1,feature:men_situational_v1,"
             "feature:elo_tuned_carryover_men_v1"
+            + (",feature:late_rate_01_ridge_strength_v1" if args.include_ridge_strength else "")
+            + (",feature:late_feat_18_espn_four_factor_v1" if args.include_espn_four_factor else "")
+            + (",feature:late_feat_19_espn_rotation_v1" if args.include_espn_rotation else "")
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -566,6 +646,9 @@ def _log_mlflow_run(
                 "elo_day_cutoff": args.day_cutoff,
                 "model": "HistGradientBoostingRegressor",
                 "margin_to_probability": "gaussian_cdf",
+                "include_ridge_strength": str(args.include_ridge_strength).lower(),
+                "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
+                "include_espn_rotation": str(args.include_espn_rotation).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }

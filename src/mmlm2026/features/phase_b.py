@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 import pandas as pd
+from sklearn.linear_model import Ridge  # type: ignore[import-untyped]
 
 
 def build_adjusted_efficiency_features(
@@ -239,6 +240,87 @@ def build_strength_of_schedule_features(
         .reset_index(drop=True)
     )
     return aggregated
+
+
+def build_regularized_margin_strength_features(
+    detailed_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+    ridge_alpha: float = 25.0,
+) -> pd.DataFrame:
+    """Build season-level ridge-regularized team strength from margin-per-100 results."""
+    required = {
+        "Season",
+        "DayNum",
+        "WTeamID",
+        "LTeamID",
+        "WScore",
+        "LScore",
+        "WFGA",
+        "WFTA",
+        "WOR",
+        "WTO",
+        "LFGA",
+        "LFTA",
+        "LOR",
+        "LTO",
+    }
+    missing = required.difference(detailed_results.columns)
+    if missing:
+        raise ValueError(f"Detailed results missing required columns: {sorted(missing)}")
+
+    filtered = detailed_results.loc[detailed_results["DayNum"] < day_cutoff].copy()
+    rows: list[dict[str, float | int | str]] = []
+    for season, season_games in filtered.groupby("Season"):
+        teams = sorted(
+            {int(team_id) for team_id in season_games["WTeamID"]}
+            | {int(team_id) for team_id in season_games["LTeamID"]}
+        )
+        if not teams:
+            continue
+        team_to_idx = {team_id: idx for idx, team_id in enumerate(teams)}
+        design_rows: list[list[float]] = []
+        response: list[float] = []
+        for _, row in season_games.iterrows():
+            winner_poss = _estimate_possessions(
+                fga=float(row["WFGA"]),
+                fta=float(row["WFTA"]),
+                oreb=float(row["WOR"]),
+                tov=float(row["WTO"]),
+            )
+            loser_poss = _estimate_possessions(
+                fga=float(row["LFGA"]),
+                fta=float(row["LFTA"]),
+                oreb=float(row["LOR"]),
+                tov=float(row["LTO"]),
+            )
+            game_possessions = max(1.0, 0.5 * (winner_poss + loser_poss))
+            margin_per100 = 100.0 * (float(row["WScore"]) - float(row["LScore"])) / game_possessions
+
+            design = [0.0] * (len(teams) + 1)
+            design[team_to_idx[int(row["WTeamID"])]] = 1.0
+            design[team_to_idx[int(row["LTeamID"])]] = -1.0
+            wloc = str(row["WLoc"]) if "WLoc" in row.index else "N"
+            design[-1] = 1.0 if wloc == "H" else -1.0 if wloc == "A" else 0.0
+            design_rows.append(design)
+            response.append(margin_per100)
+
+        model = Ridge(alpha=ridge_alpha, fit_intercept=False)
+        model.fit(design_rows, response)
+        coefficients = pd.Series(model.coef_[: len(teams)], index=teams, dtype=float)
+        coefficients = coefficients - float(coefficients.mean())
+        season_int = int(cast(int, season))
+        for team_id, rating in coefficients.items():
+            team_id_int = int(cast(int, team_id))
+            rows.append(
+                {
+                    "Season": season_int,
+                    "TeamID": team_id_int,
+                    "ridge_strength": float(rating),
+                }
+            )
+
+    return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
 
 
 def build_recent_form_features(

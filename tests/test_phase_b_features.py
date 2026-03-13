@@ -13,6 +13,7 @@ from mmlm2026.features.phase_b import (
     build_margin_per_100_features,
     build_massey_consensus_features,
     build_recent_form_features,
+    build_regularized_margin_strength_features,
     build_schedule_adjusted_net_eff_features,
     build_strength_of_schedule_features,
     build_turnover_rate_features,
@@ -262,3 +263,33 @@ def test_build_iterative_adjusted_efficiency_features_supports_women_hca() -> No
     baseline_team = baseline.loc[baseline["TeamID"] == 10, "raw_off_eff"].iloc[0]
     adjusted_team = adjusted.loc[adjusted["TeamID"] == 10, "raw_off_eff"].iloc[0]
     assert adjusted_team < baseline_team
+
+
+def test_build_regularized_margin_strength_features_returns_centered_ratings() -> None:
+    detailed = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "DayNum": [20, 30],
+            "WTeamID": [10, 30],
+            "LTeamID": [20, 10],
+            "WScore": [80, 75],
+            "LScore": [70, 65],
+            "WLoc": ["H", "N"],
+            "WFGA": [60, 58],
+            "WFTA": [20, 18],
+            "WOR": [10, 9],
+            "WTO": [12, 11],
+            "LFGA": [58, 56],
+            "LFTA": [18, 16],
+            "LOR": [8, 7],
+            "LTO": [14, 13],
+        }
+    )
+
+    features = build_regularized_margin_strength_features(detailed, ridge_alpha=10.0)
+
+    assert set(features.columns) == {"Season", "TeamID", "ridge_strength"}
+    assert set(features["TeamID"]) == {10, 20, 30}
+    assert features["ridge_strength"].mean() == pytest.approx(0.0)
+    strength_map = features.set_index("TeamID")["ridge_strength"].to_dict()
+    assert strength_map[30] > strength_map[10] > strength_map[20]

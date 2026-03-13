@@ -29,6 +29,98 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-FEAT-19: men ESPN rotation-stability proxies
+
+Status: Completed
+
+Hypothesis:
+- ESPN-derived player/rotation continuity proxies layered onto the strongest men latent-strength challenger will improve held-out flat Brier beyond the ESPN four-factor slice alone.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- feature:late_rate_01_ridge_strength_v1
+- feature:late_feat_18_espn_four_factor_v1
+- feature:late_feat_19_espn_rotation_v1
+
+MLflow:
+- Run name: `late-feat-19-men-espn-rotation`
+
+Result:
+- Added a leakage-safe ESPN rotation-stability feature path using matched regular-season ESPN boxscores only.
+- Derived team-season proxies for top-5 minute share, top-player minute share, most-common starter-lineup stability, and a composite `espn_rotation_stability`.
+- Layering `espn_rotation_stability_diff` on top of the ridge + ESPN four-factor men challenger degraded the held-out window to `flat_brier = 0.196864` and `log_loss = 0.577258`.
+- This is worse than both the frozen men leader (`0.195566`) and the ESPN four-factor slice (`0.195652`), so the rotation proxy does not advance.
+
+Re-test if:
+- ESPN player data is extended with cleaner availability signals such as missed-game streaks, top-player absence flags, or lineup continuity over only the last 10 games.
+- A future challenger uses these rotation proxies in a routed `R2+`-specific model instead of the unified men reference path.
+
+Related:
+- [src/mmlm2026/features/espn.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/espn.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+
+---
+## 2026-03-13 — LATE-RATE-01 v2: men ESPN four-factor strength
+
+Status: Completed
+
+Hypothesis:
+- ESPN-derived four-factor team strength, matched only to Kaggle regular-season games, will improve the frozen men reference margin model when added to the latent-strength stack.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- feature:late_rate_01_ridge_strength_v1
+- feature:late_feat_18_espn_four_factor_v1
+- feature:elo_tuned_carryover_men_v1
+
+MLflow:
+- Run name: `late-rate-01-men-espn-four-factor`
+
+Result:
+- Added a leakage-safe ESPN men four-factor feature path by mapping ESPN team IDs to Kaggle TeamIDs and retaining only ESPN games that match Kaggle regular-season results.
+- The second `LATE-RATE-01` slice added `espn_four_factor_strength_diff` on top of the first ridge-strength variant.
+- The challenger scored `flat_brier = 0.195652` and `log_loss = 0.576072` on the 2023-2024 held-out window.
+- This is effectively tied with the frozen men leader but still slightly worse than `0.195566`, so it does not advance.
+
+Re-test if:
+- ESPN-derived player-continuity or richer four-factor variants are added.
+- A decay-weighted or tournament-only upstream rating is combined with the ESPN strength layer.
+
+Related:
+- [src/mmlm2026/features/espn.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/espn.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+
+---
+## 2026-03-13 — LATE-RATE-01 v1: men ridge-strength latent rating
+
+Status: Completed
+
+Hypothesis:
+- A ridge-regularized season-level team strength rating built from pre-tournament detailed results will improve the frozen men reference margin model more than another calibration-only tweak.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- feature:phase_b_v1
+- feature:elo_tuned_carryover_men_v1
+
+MLflow:
+- Run name: `late-rate-01-men-ridge-strength`
+
+Result:
+- Added `ridge_strength` to Phase B team features via a season-level ridge rating fit on regular-season margin-per-100 results with a home-court term.
+- Tested the first `LATE-RATE-01` slice by adding `ridge_strength_diff` to the existing men reference margin pipeline.
+- The challenger scored `flat_brier = 0.196103` and `log_loss = 0.578436` on the 2023-2024 held-out window.
+- The frozen men leader remains better at `0.195566`, so this first latent-strength variant does not advance.
+
+Re-test if:
+- A richer upstream men strength layer is built from ESPN-derived four-factor or player-continuity features.
+- A second latent-strength variant changes the rating target materially (for example offense/defense or decay-weighted rating construction).
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [docs/roadmaps/PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
 ## 2026-03-13 — LATE-ARCH-RG-08: routed women `R1` vs `R2+` model
 
 Status: Completed
