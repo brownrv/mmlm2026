@@ -245,6 +245,9 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
 
     assert feature_table["seed_diff"].tolist() == [15]
     assert feature_table["elo_diff"].tolist() == [100.0]
+    assert feature_table["low_seed_elo_gap"].iloc[0] == pytest.approx(-150.0)
+    assert feature_table["high_seed_elo_gap"].iloc[0] == pytest.approx(125.0)
+    assert feature_table["seed_elo_gap_diff"].iloc[0] == pytest.approx(-275.0)
     assert feature_table["win_pct_diff"].iloc[0] == pytest.approx(0.2)
     assert feature_table["def_eff_diff"].iloc[0] == pytest.approx(6.0)
     assert feature_table["pythag_diff"].iloc[0] == pytest.approx(0.19)

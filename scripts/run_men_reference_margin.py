@@ -93,6 +93,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include Pythagorean expectancy differential as an extra feature.",
     )
+    parser.add_argument(
+        "--include-seed-elo-gap",
+        action="store_true",
+        help="Include seed-Elo gap differential as an extra feature.",
+    )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
     parser.add_argument("--elo-home-advantage", type=float, default=43.0)
@@ -241,6 +246,8 @@ def main() -> int:
         feature_cols.append("elo_momentum_diff")
     if args.include_pythag:
         feature_cols.append("pythag_diff")
+    if args.include_seed_elo_gap:
+        feature_cols.append("seed_elo_gap_diff")
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
@@ -259,6 +266,8 @@ def main() -> int:
         calibration_feature_cols.append("elo_momentum_diff")
     if args.include_pythag:
         calibration_feature_cols.append("pythag_diff")
+    if args.include_seed_elo_gap:
+        calibration_feature_cols.append("seed_elo_gap_diff")
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -696,6 +705,7 @@ def _log_mlflow_run(
             + (",feature:late_feat_21_tourney_elo_v1" if args.include_tourney_elo else "")
             + (",feature:late_feat_22_elo_momentum_v1" if args.include_elo_momentum else "")
             + (",feature:late_feat_26_pythag_expectancy_v1" if args.include_pythag else "")
+            + (",feature:late_feat_23_seed_elo_gap_v1" if args.include_seed_elo_gap else "")
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -715,6 +725,7 @@ def _log_mlflow_run(
                 "include_tourney_elo": str(args.include_tourney_elo).lower(),
                 "include_elo_momentum": str(args.include_elo_momentum).lower(),
                 "include_pythag": str(args.include_pythag).lower(),
+                "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }

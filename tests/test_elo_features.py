@@ -61,6 +61,9 @@ def test_build_elo_seed_tourney_features_adds_elo_columns() -> None:
     assert feature_table["low_elo"].tolist() == [1600.0]
     assert feature_table["high_elo"].tolist() == [1450.0]
     assert feature_table["elo_diff"].tolist() == [150.0]
+    assert feature_table["low_seed_elo_gap"].iloc[0] == pytest.approx(-150.0)
+    assert feature_table["high_seed_elo_gap"].iloc[0] == pytest.approx(75.0)
+    assert feature_table["seed_elo_gap_diff"].iloc[0] == pytest.approx(-225.0)
     assert feature_table["seed_diff"].tolist() == [15]
 
 
@@ -88,6 +91,7 @@ def test_build_elo_seed_matchup_features_generates_all_pairs() -> None:
         [20, 30],
     ]
     assert matchup_table["elo_diff"].tolist() == [75.0, 150.0, 75.0]
+    assert matchup_table["seed_elo_gap_diff"].tolist() == [-100.0, -225.0, -125.0]
 
 
 def test_compute_pre_tourney_elo_ratings_supports_carryover_and_tourney_updates() -> None:

@@ -299,6 +299,13 @@ def build_elo_seed_tourney_features(
         elo_map[(int(row["Season"]), int(row["HighTeamID"]))] for _, row in seed_features.iterrows()
     ]
     seed_features["elo_diff"] = seed_features["low_elo"] - seed_features["high_elo"]
+    low_expected_elo = 1750.0 - (seed_features["low_seed"].astype(float) - 1.0) * 25.0
+    high_expected_elo = 1750.0 - (seed_features["high_seed"].astype(float) - 1.0) * 25.0
+    seed_features["low_seed_elo_gap"] = seed_features["low_elo"] - low_expected_elo
+    seed_features["high_seed_elo_gap"] = seed_features["high_elo"] - high_expected_elo
+    seed_features["seed_elo_gap_diff"] = (
+        seed_features["low_seed_elo_gap"] - seed_features["high_seed_elo_gap"]
+    )
     return seed_features
 
 
@@ -336,6 +343,8 @@ def build_elo_seed_matchup_features(
             high_team = int(high_row["TeamID"])
             low_elo = elo_map[low_team]
             high_elo = elo_map[high_team]
+            low_expected_elo = 1750.0 - (float(low_row["seed_value"]) - 1.0) * 25.0
+            high_expected_elo = 1750.0 - (float(high_row["seed_value"]) - 1.0) * 25.0
             rows.append(
                 {
                     "Season": season,
@@ -348,6 +357,10 @@ def build_elo_seed_matchup_features(
                     "low_elo": low_elo,
                     "high_elo": high_elo,
                     "elo_diff": low_elo - high_elo,
+                    "low_seed_elo_gap": low_elo - low_expected_elo,
+                    "high_seed_elo_gap": high_elo - high_expected_elo,
+                    "seed_elo_gap_diff": (low_elo - low_expected_elo)
+                    - (high_elo - high_expected_elo),
                     "round_group": None,
                     "Round": None,
                     "outcome": None,
@@ -428,6 +441,13 @@ def build_elo_seed_submission_features(
 
     enriched["seed_diff"] = enriched["high_seed"] - enriched["low_seed"]
     enriched["elo_diff"] = enriched["low_elo"] - enriched["high_elo"]
+    low_expected_elo = 1750.0 - (enriched["low_seed"].astype(float) - 1.0) * 25.0
+    high_expected_elo = 1750.0 - (enriched["high_seed"].astype(float) - 1.0) * 25.0
+    enriched["low_seed_elo_gap"] = enriched["low_elo"] - low_expected_elo
+    enriched["high_seed_elo_gap"] = enriched["high_elo"] - high_expected_elo
+    enriched["seed_elo_gap_diff"] = (
+        enriched["low_seed_elo_gap"] - enriched["high_seed_elo_gap"]
+    )
     rounds = _rounds_from_seed_pairs(
         enriched,
         low_seed_col="low_seed_label",

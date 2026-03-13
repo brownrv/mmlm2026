@@ -29,6 +29,72 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-FEAT bundle: Elo momentum + Pythagorean expectancy + seed-Elo gap
+
+Status: Completed
+
+Hypothesis:
+- The three low-effort derived features may be too weak individually but useful together, because they summarize different views of team quality drift, score-based strength, and seed-vs-rating mispricing.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_22_elo_momentum_v1
+- feature:late_feat_26_pythag_expectancy_v1
+- feature:late_feat_23_seed_elo_gap_v1
+
+MLflow:
+- Run name: `late-feat-bundle-men-elo-pythag-seed-gap`
+- Run name: `late-feat-bundle-women-elo-pythag-seed-gap`
+
+Result:
+- Tested the planned bundled challenger using `elo_momentum_diff`, `pythag_diff`, and `seed_elo_gap_diff` together on top of the current frozen leader families.
+- The men bundle scored `flat_brier = 0.196494` and `log_loss = 0.577848`, which is worse than the best individual low-effort men slices and still behind the frozen men leader `0.195566`.
+- The women bundle scored `flat_brier = 0.138380` and `log_loss = 0.418886`, which is materially worse than the routed women leader `0.131950`.
+- The combined low-effort bundle does not advance and suggests these derived features are not interacting constructively in the current leader families.
+
+Re-test if:
+- A future challenger uses these features only in a routed `R2+` model rather than a unified path.
+- The bundle is paired with a different upstream rating family instead of the current frozen leaders.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-FEAT-23: seed-Elo gap
+
+Status: Completed
+
+Hypothesis:
+- Teams whose Elo materially exceeds or trails what their seed line implies are mispriced by seed-based tournament models, so `seed_elo_gap_diff` should add signal on top of seed and Elo separately.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_23_seed_elo_gap_v1
+
+MLflow:
+- Run name: `late-feat-23-men-seed-elo-gap`
+- Run name: `late-feat-23-women-seed-elo-gap`
+
+Result:
+- Added `seed_elo_gap_diff`, defined as actual Elo minus the seed-implied Elo baseline `1750 - (seed - 1) * 25`, to the current men and women leader-family challengers.
+- The men challenger scored `flat_brier = 0.197100` and `log_loss = 0.580906` on the 2023-2024 held-out window, which was materially worse than the frozen men leader at `0.195566`.
+- The women challenger scored `flat_brier = 0.132013` and `log_loss = 0.405026`, improving over several recent women late-feature challengers but still missing the routed women leader `0.131950` by `0.000063`.
+- Seed-Elo gap does not advance as a standalone additive feature in either league.
+
+Re-test if:
+- It is bundled with Elo momentum and/or Pythagorean expectancy instead of tested in isolation.
+- A future routed challenger uses the seed-Elo gap only in `R2+` where seeding mispricing may matter more.
+
+Related:
+- [src/mmlm2026/features/elo.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/elo.py)
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
 ## 2026-03-13 — LATE-FEAT-26: Pythagorean expectancy
 
 Status: Completed

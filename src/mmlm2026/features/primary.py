@@ -640,6 +640,14 @@ def _attach_team_feature_diffs(
         )
 
     merged["elo_diff"] = merged["low_elo"] - merged["high_elo"]
+    if {"low_seed", "high_seed", "low_elo", "high_elo"}.issubset(merged.columns):
+        low_expected_elo = 1750.0 - (merged["low_seed"].astype(float) - 1.0) * 25.0
+        high_expected_elo = 1750.0 - (merged["high_seed"].astype(float) - 1.0) * 25.0
+        merged["low_seed_elo_gap"] = merged["low_elo"].astype(float) - low_expected_elo
+        merged["high_seed_elo_gap"] = merged["high_elo"].astype(float) - high_expected_elo
+        merged["seed_elo_gap_diff"] = (
+            merged["low_seed_elo_gap"] - merged["high_seed_elo_gap"]
+        )
     merged["win_pct_diff"] = merged["low_win_pct"] - merged["high_win_pct"]
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
     if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):

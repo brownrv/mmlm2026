@@ -59,6 +59,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include Pythagorean expectancy differential as an extra feature.",
     )
+    parser.add_argument(
+        "--include-seed-elo-gap",
+        action="store_true",
+        help="Include seed-Elo gap differential as an extra feature.",
+    )
     return parser
 
 
@@ -105,6 +110,8 @@ def main() -> int:
             diff_name="pythag_diff",
         )
         feature_cols.append("pythag_diff")
+    if args.include_seed_elo_gap:
+        feature_cols.append("seed_elo_gap_diff")
 
     output_dir = args.output_dir / "w_routed_round_group"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -377,6 +384,7 @@ def _log_mlflow_run(
                 "include_tourney_elo": str(args.include_tourney_elo).lower(),
                 "include_elo_momentum": str(args.include_elo_momentum).lower(),
                 "include_pythag": str(args.include_pythag).lower(),
+                "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
             }
         )
         mlflow.log_metrics(
