@@ -29,6 +29,39 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — VAL-03: frozen-pair bracket diagnostics on historical 2025 dry run
+
+Status: Completed
+
+Hypothesis:
+- Deterministic bracket diagnostics on the frozen men and women models should not reveal an obvious calibration failure in the high-likelihood matchup buckets.
+
+Dependencies:
+- plan:002_gate3
+- arch-04b
+- val-05
+- bracket_dp:v1
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Ran the combined frozen submission builder on the historical 2025 combined sample and wrote a validated output at [2025_val-03-2025_submission.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/submissions/2025_val-03-2025_submission.csv), with bracket artifacts under [2025_val-03-2025_artifacts](/c:/Users/brown/Documents/GitHub/mmlm2026/data/submissions/2025_val-03-2025_artifacts).
+- Men high-likelihood buckets were acceptable: `definite` games scored `flat_brier = 0.131962` over 32 games and `very_likely` games scored `0.163090` over 25 games. The tiny `plausible` and `remote` buckets were noisier but low-volume.
+- Women high-likelihood buckets were also stable: `definite` games scored `flat_brier = 0.112011` over 32 games and `very_likely` games scored `0.112525` over 30 games.
+- Conclusion: the frozen pair does not show an obvious bracket-space calibration risk in the high-likelihood buckets. `VAL-03` is operationally satisfied on the historical dry-run path.
+
+Re-test if:
+- The frozen men or women model changes.
+- The bracket DP bucket definitions change.
+- The real 2026 Stage 2 run produces materially different high-likelihood bucket behavior.
+
+Related:
+- docs/roadmaps/PLAN-002-competition-attack-plan.md
+- docs/roadmaps/EXECUTION_STATUS.md
+
+---
 ## 2026-03-12 — Gate 3: historical frozen-submission dry run
 
 Status: Completed

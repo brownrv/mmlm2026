@@ -213,6 +213,7 @@ __marimo__/
 data/*
 logs/
 mlruns/
+mlflow.db
 !docs/data/
 !docs/data/**
 !data/README.md
