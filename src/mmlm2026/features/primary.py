@@ -90,6 +90,70 @@ def build_team_season_summary(
     return summary
 
 
+def build_season_momentum_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+    split_day: int = 67,
+) -> pd.DataFrame:
+    """Build season-level momentum as second-half minus first-half average margin."""
+    required = {
+        "Season",
+        "DayNum",
+        "WTeamID",
+        "WScore",
+        "LTeamID",
+        "LScore",
+    }
+    missing = required.difference(regular_season_results.columns)
+    if missing:
+        raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+
+    filtered = regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff].copy()
+    rows: list[dict[str, float | int | str]] = []
+    for _, row in filtered.iterrows():
+        half = "H1" if int(row["DayNum"]) < split_day else "H2"
+        season = int(row["Season"])
+        winner_score = float(row["WScore"])
+        loser_score = float(row["LScore"])
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["WTeamID"]),
+                "half": half,
+                "margin": winner_score - loser_score,
+            }
+        )
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["LTeamID"]),
+                "half": half,
+                "margin": loser_score - winner_score,
+            }
+        )
+
+    team_games = pd.DataFrame(rows)
+    grouped = (
+        team_games.groupby(["Season", "TeamID", "half"], as_index=False)
+        .agg(avg_margin=("margin", "mean"))
+        .sort_values(["Season", "TeamID", "half"])
+        .reset_index(drop=True)
+    )
+    pivoted = grouped.pivot(index=["Season", "TeamID"], columns="half", values="avg_margin")
+    pivoted = pivoted.reset_index()
+    if "H1" not in pivoted.columns:
+        pivoted["H1"] = 0.0
+    if "H2" not in pivoted.columns:
+        pivoted["H2"] = 0.0
+    pivoted["H1"] = pivoted["H1"].fillna(0.0).astype(float)
+    pivoted["H2"] = pivoted["H2"].fillna(0.0).astype(float)
+    pivoted["season_momentum"] = pivoted["H2"] - pivoted["H1"]
+    return pivoted[["Season", "TeamID", "season_momentum"]].sort_values(
+        ["Season", "TeamID"]
+    ).reset_index(drop=True)
+
+
 def build_phase_ab_team_features(
     regular_season_results: pd.DataFrame,
     regular_season_detailed_results: pd.DataFrame,
@@ -561,6 +625,7 @@ def _attach_team_feature_diffs(
         "avg_score",
         "avg_points_allowed",
         "pythag_expectancy",
+        "season_momentum",
         "elo",
         "tempo",
         "off_eff",
@@ -652,6 +717,10 @@ def _attach_team_feature_diffs(
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
     if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):
         merged["pythag_diff"] = merged["low_pythag_expectancy"] - merged["high_pythag_expectancy"]
+    if {"low_season_momentum", "high_season_momentum"}.issubset(merged.columns):
+        merged["season_momentum_diff"] = (
+            merged["low_season_momentum"] - merged["high_season_momentum"]
+        )
     merged["tempo_diff"] = merged["low_tempo"] - merged["high_tempo"]
     merged["off_eff_diff"] = merged["low_off_eff"] - merged["high_off_eff"]
     merged["def_eff_diff"] = merged["high_def_eff"] - merged["low_def_eff"]

@@ -33,6 +33,7 @@ from mmlm2026.features.primary import (
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
+    build_season_momentum_features,
 )
 from mmlm2026.utils.mlflow_tracking import start_tracked_run
 
@@ -97,6 +98,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-seed-elo-gap",
         action="store_true",
         help="Include seed-Elo gap differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-season-momentum",
+        action="store_true",
+        help=(
+            "Include second-half minus first-half average margin "
+            "differential as an extra feature."
+        ),
     )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
@@ -180,6 +189,17 @@ def main() -> int:
             how="left",
             validate="one_to_one",
         )
+    if args.include_season_momentum:
+        season_momentum = build_season_momentum_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
+        team_features = team_features.merge(
+            season_momentum,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
     if args.include_espn_four_factor:
         seasons = sorted(
             season
@@ -248,6 +268,8 @@ def main() -> int:
         feature_cols.append("pythag_diff")
     if args.include_seed_elo_gap:
         feature_cols.append("seed_elo_gap_diff")
+    if args.include_season_momentum:
+        feature_cols.append("season_momentum_diff")
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
@@ -268,6 +290,8 @@ def main() -> int:
         calibration_feature_cols.append("pythag_diff")
     if args.include_seed_elo_gap:
         calibration_feature_cols.append("seed_elo_gap_diff")
+    if args.include_season_momentum:
+        calibration_feature_cols.append("season_momentum_diff")
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -706,6 +730,7 @@ def _log_mlflow_run(
             + (",feature:late_feat_22_elo_momentum_v1" if args.include_elo_momentum else "")
             + (",feature:late_feat_26_pythag_expectancy_v1" if args.include_pythag else "")
             + (",feature:late_feat_23_seed_elo_gap_v1" if args.include_seed_elo_gap else "")
+            + (",feature:late_feat_25_season_momentum_v1" if args.include_season_momentum else "")
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -726,6 +751,7 @@ def _log_mlflow_run(
                 "include_elo_momentum": str(args.include_elo_momentum).lower(),
                 "include_pythag": str(args.include_pythag).lower(),
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
+                "include_season_momentum": str(args.include_season_momentum).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }

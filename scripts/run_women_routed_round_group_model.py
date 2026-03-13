@@ -21,7 +21,7 @@ from mmlm2026.features.elo import (
     compute_elo_momentum_features,
     compute_tournament_only_elo_ratings,
 )
-from mmlm2026.features.primary import build_team_season_summary
+from mmlm2026.features.primary import build_season_momentum_features, build_team_season_summary
 from mmlm2026.submission.frozen_models import (
     WOMEN_ELO_PARAMS,
     build_seeded_submission_rows,
@@ -63,6 +63,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-seed-elo-gap",
         action="store_true",
         help="Include seed-Elo gap differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-season-momentum",
+        action="store_true",
+        help=(
+            "Include second-half minus first-half average margin "
+            "differential as an extra feature."
+        ),
     )
     return parser
 
@@ -112,6 +120,17 @@ def main() -> int:
         feature_cols.append("pythag_diff")
     if args.include_seed_elo_gap:
         feature_cols.append("seed_elo_gap_diff")
+    if args.include_season_momentum:
+        season_momentum = build_season_momentum_features(context.regular_season)[
+            ["Season", "TeamID", "season_momentum"]
+        ]
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            season_momentum,
+            feature_name="season_momentum",
+            diff_name="season_momentum_diff",
+        )
+        feature_cols.append("season_momentum_diff")
 
     output_dir = args.output_dir / "w_routed_round_group"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -170,6 +189,16 @@ def main() -> int:
             pythag,
             feature_name="pythag_expectancy",
             diff_name="pythag_diff",
+        )
+    if args.include_season_momentum:
+        season_momentum = build_season_momentum_features(context.regular_season)[
+            ["Season", "TeamID", "season_momentum"]
+        ]
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            season_momentum,
+            feature_name="season_momentum",
+            diff_name="season_momentum_diff",
         )
     infer_frame = _score_inference_frame(
         feature_table,
@@ -385,6 +414,7 @@ def _log_mlflow_run(
                 "include_elo_momentum": str(args.include_elo_momentum).lower(),
                 "include_pythag": str(args.include_pythag).lower(),
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
+                "include_season_momentum": str(args.include_season_momentum).lower(),
             }
         )
         mlflow.log_metrics(

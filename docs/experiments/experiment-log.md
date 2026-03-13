@@ -29,6 +29,73 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-EXT-01/02: benchmark-guided challenger design
+
+Status: Completed
+
+Hypothesis:
+- Comparing the frozen leaders against the `adj_quality_gap_v10` all-pairs benchmark on the same matchup universe will identify recurring round-bucket cells where local challengers are most worth trying next.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- diagnostics:all_matchups_export_v1
+- dataset:data_reference_v1
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Added benchmark-gap export tooling to compare local all-matchups predictions against `data/reference` and summarize recurring gaps by league, round group, and matchup-likelihood bucket.
+- The highest-priority recurring gap is women `R2+ / very_likely`: `played_games = 323`, `play_prob_mass = 321.6`, local `flat_brier = 0.166778`, benchmark `flat_brier = 0.145030`, `mean_brier_gap = 0.021748`.
+- The second strongest recurring gap is women `R1 / definite`: `played_games = 432`, `play_prob_mass = 432.0`, local `flat_brier = 0.117087`, benchmark `flat_brier = 0.109559`, `mean_brier_gap = 0.007529`.
+- Men gaps are smaller and later-round concentrated: `R2+ / likely` (`mean_brier_gap = 0.003798`) and `R2+ / plausible` (`0.009895`) are the only recurring cells with meaningful mass.
+- Recommendation: keep `data/reference` diagnostic-only, and use these cells to design the next targeted challengers rather than treating benchmark probabilities as trainable features or replacement selection metrics.
+
+Re-test if:
+- The frozen leaders change.
+- `data/reference` is refreshed with a different benchmark model or season coverage.
+- A new challenger meaningfully changes women `R2+ / very_likely` or men `R2+ likely/plausible` behavior.
+
+Related:
+- [src/mmlm2026/analysis/benchmark_gap.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/analysis/benchmark_gap.py)
+- [scripts/export_benchmark_gap_analysis.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_benchmark_gap_analysis.py)
+- [data/interim/benchmark_gap_analysis/benchmark_gap_priority_cells.csv](/c:/Users/brown/Documents/GitHub/mmlm2026/data/interim/benchmark_gap_analysis/benchmark_gap_priority_cells.csv)
+
+---
+## 2026-03-13 — LATE-FEAT-25: season momentum
+
+Status: Completed
+
+Hypothesis:
+- Teams improving across the full season arc should outperform flat or declining teams at tournament time, so second-half minus first-half average margin adds signal beyond seed and Elo.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_routed_round_group_v1
+- feature:late_feat_25_season_momentum_v1
+
+MLflow:
+- Run name: `late-feat-25-men-season-momentum`
+- Run name: `late-feat-25-women-season-momentum`
+
+Result:
+- Added `season_momentum_diff`, defined as second-half minus first-half average margin with a midseason split at DayNum `67`, to the current men and women leader-family challengers.
+- The men challenger scored `flat_brier = 0.196529` and `log_loss = 0.578522` on the 2023-2024 held-out window, which is still worse than the frozen men leader `0.195566`.
+- The women challenger scored `flat_brier = 0.132935` and `log_loss = 0.407150`, which improved on some recent women late-feature slices but still stayed behind the routed women leader `0.131950`.
+- Season momentum does not advance as a standalone additive feature in either league.
+
+Re-test if:
+- A future challenger uses season momentum only in routed `R2+` models.
+- The split definition changes from a fixed midseason day to a team-specific half-season split.
+
+Related:
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
 ## 2026-03-13 — LATE-FEAT bundle: Elo momentum + Pythagorean expectancy + seed-Elo gap
 
 Status: Completed
