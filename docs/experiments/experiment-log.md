@@ -29,6 +29,32 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — Gate 3: historical frozen-model diagnostics export and notebook
+
+Status: Completed
+
+Hypothesis:
+- A saved multi-season realized-game table for the frozen models will make it easier to inspect systematic weak spots by league, round, bucket, and season without recomputing models inside notebooks.
+
+Dependencies:
+- plan:002_gate3
+- frozen_models:men_generalization_reference_margin
+- frozen_models:women_arch04b_tuned_elo
+
+Result:
+- Added a reusable frozen-model scoring module plus `scripts/export_frozen_historical_performance.py` to materialize historical played-game diagnostics to `data/interim/frozen_historical_performance.parquet` and `.csv`.
+- Added `notebooks/frozen_historical_performance_tables.ipynb` with season/league/round/bucket tables, heatmaps, bucket calibration views, total Brier-contribution bars, and worst-cell diagnostics for improvement hunting.
+
+Re-test if:
+- The frozen men or women model is replaced before final submission.
+- Bucket policy or round assignment changes.
+
+Related:
+- [scripts/export_frozen_historical_performance.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_frozen_historical_performance.py)
+- [notebooks/frozen_historical_performance_tables.ipynb](/c:/Users/brown/Documents/GitHub/mmlm2026/notebooks/frozen_historical_performance_tables.ipynb)
+- [docs/roadmaps/PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
 ## 2026-03-13 — VAL-03: frozen-pair bracket diagnostics on historical 2025 dry run
 
 Status: Completed
