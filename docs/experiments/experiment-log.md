@@ -29,6 +29,90 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — ARCH-04C: ARCH-04B + women_hca_adj_qg_diff challenger
+
+Status: Completed
+
+Hypothesis:
+- The frozen women leader `ARCH-04B` may improve if it absorbs the strongest women-specific structural strength feature, `women_hca_adj_qg_diff`, without changing model family or adding broader complexity.
+
+Dependencies:
+- frozen_models:women_arch04b_tuned_elo
+- feature:feat_13_women_hca_adj_qg_v1
+
+MLflow:
+- Run name: `arch-04c-arch04b-plus-adj-qg-women`
+
+Result:
+- Added `scripts/run_arch04b_adj_qg_challenger.py` to fit a direct `ARCH-04B` extension using `seed_diff`, tuned `elo_diff`, and `women_hca_adj_qg_diff`.
+- The challenger scored `flat_brier = 0.140032` on the 2023-2024 held-out window, which is materially worse than the frozen women leader `ARCH-04B` at `0.132193`.
+- Conclusion: the women HCA-adjusted quality-gap signal does not combine cleanly with the frozen tuned-Elo baseline in this narrow structural form. It should not advance.
+
+Re-test if:
+- The women HCA-adjusted quality-gap feature definition changes materially.
+- The frozen women baseline is replaced before submission.
+
+Related:
+- [scripts/run_arch04b_adj_qg_challenger.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_arch04b_adj_qg_challenger.py)
+- [docs/roadmaps/PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
+## 2026-03-13 — VAL-07: women very_likely / R2+ calibration challenger
+
+Status: Completed
+
+Hypothesis:
+- The frozen women model's weakness in `very_likely` and later-round games may be reducible with a narrow temperature-scaling layer targeted at `very_likely` and `R2+` rows without changing the base women model.
+
+Dependencies:
+- frozen_models:women_arch04b_tuned_elo
+- diagnostics:frozen_historical_performance
+
+MLflow:
+- Run name: `val-07-women-bucket-group-calibration`
+
+Result:
+- Added `scripts/run_women_bucket_group_calibration.py` to fit a global women temperature plus targeted overrides for `very_likely` and `R2+` groups derived from bracket play-probability buckets.
+- The challenger scored `flat_brier = 0.134298` on the 2023-2024 held-out window, which did not beat the frozen women leader `ARCH-04B` at `0.132193`.
+- The fitted `very_likely` temperature reverted to the global value (`~1.1588`), while `R2+` moved slightly higher (`~1.2573`), so the historical weakness appears to be more round-driven than bucket-driven under the current women model.
+
+Re-test if:
+- The frozen women model is replaced before submission.
+- Women bucket diagnostics change materially after the 2026 data refresh.
+
+Related:
+- [scripts/run_women_bucket_group_calibration.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_bucket_group_calibration.py)
+- [notebooks/frozen_historical_performance_tables.ipynb](/c:/Users/brown/Documents/GitHub/mmlm2026/notebooks/frozen_historical_performance_tables.ipynb)
+
+---
+## 2026-03-13 — VAL-06: men round-group calibration challenger
+
+Status: Completed
+
+Hypothesis:
+- The frozen men model's persistent `R2+` weakness may be fixable with round-group-specific calibration and Elo blend weights without changing the underlying feature stack.
+
+Dependencies:
+- frozen_models:men_generalization_reference_margin
+- diagnostics:frozen_historical_performance
+
+MLflow:
+- Run name: `val-06-men-round-group-calibration`
+
+Result:
+- Added `scripts/run_men_round_group_calibration.py` to fit separate prior-season calibration states for `R1` and `R2+` on top of the frozen men model.
+- The challenger scored `flat_brier = 0.197124` on the 2023-2024 held-out window, which did not beat the frozen men leader at `0.195566`.
+- The fitted states diverged materially (`R1 alpha ~ 0.72`, `R2+ alpha ~ 0.35`), which confirms the diagnostic pattern is real, but the net gain was not enough to replace the frozen model.
+
+Re-test if:
+- A later men challenger changes the base men probability surface before submission.
+- Historical round-group diagnostics move materially after the 2026 data refresh.
+
+Related:
+- [scripts/run_men_round_group_calibration.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_round_group_calibration.py)
+- [notebooks/frozen_historical_performance_tables.ipynb](/c:/Users/brown/Documents/GitHub/mmlm2026/notebooks/frozen_historical_performance_tables.ipynb)
+
+---
 ## 2026-03-13 — Gate 3: historical frozen-model diagnostics export and notebook
 
 Status: Completed

@@ -112,6 +112,21 @@ See `docs/data/FILE_CATALOG.md` for full catalog. Summary of high-value tables:
 - Canonical team name mapping: `data/TeamSpellings.csv`
 - Elo regular-season cutoff: `DayNum < 134` (rule still valid; separate from round assignment)
 
+### 1.3.1 Supplemental Local Datasets for Late Challengers
+
+The repository now contains several non-Kaggle datasets that are explicitly in scope for late challenger work. These are not default production dependencies yet; they are challenger assets and must beat the frozen leaders on held-out flat Brier before they are promoted.
+
+| Dataset | Path | Coverage | Best use | Main risks |
+|---|---|---|---|---|
+| Reference all-matchups benchmark table | `data/reference/` | Men 2003–2025, Women 2010–2025 | Compare local models against `adj_quality_gap_v10`, inspect bucket/round-specific misses, and build challenger-targeted diagnostics | Contains model-derived features and probabilities from the benchmark model; use for comparison, error analysis, and feature inspiration, not as a leakage-prone direct training target |
+| BetExplorer odds | `data/processed/betexplorer/` | Men and women, regular season and tournament, opening/closing odds | Market-implied priors, calibration anchors, and late-round matchup strength features | Coverage gaps, team-name mapping quality, and market data availability may differ by league and season |
+| ESPN parsed game and player data | `data/processed/espn/` | Men and women historical seasons in parquet | Richer box-score and player-level strength signals, lineup-agnostic form, possession decomposition, and situational features | Join complexity, schema drift, and the risk of over-building low-signal features under deadline |
+
+**Planning stance for these datasets:**
+- `data/reference/` is primarily an analysis and benchmark-comparison asset. It is best used to identify where local models differ from the benchmark on the same matchup universe and to prioritize challenger hypotheses.
+- `data/processed/betexplorer/` is the highest-upside late challenger dataset if coverage is clean, because market odds can act as a strong compressed prior for strength and calibration.
+- `data/processed/espn/` is the best source for improving internal strength ratings and situational features, especially if the objective is a better latent team-quality model rather than a broader final classifier.
+
 ### 1.4 Feature Pre-Registration
 
 Features must be registered before fitting. For each feature, record:
@@ -139,6 +154,9 @@ Features must be registered before fitting. For each feature, record:
 | Conference strength (avg Elo of conference peers) | + stronger conf | None | Indirect signal |
 | Recent form (last N games win rate) | + hot team | None | Define N pre-fit |
 | Head-to-head (current season, if any) | + H2H winner | Low | Rare in tourney matchups |
+| Market-implied probability / spread prior | + stronger market favorite wins | Medium | Late-challenger only; requires strict pregame timing, clean team mapping, and market-coverage audit |
+| ESPN-derived four-factor / possession composites | + stronger efficiency profile wins | Medium | Late-challenger only; must be season-stable and aggregated without future leakage |
+| Player/rotation continuity proxies | Interaction | Medium | Late-challenger only; useful only if historical coverage and joins are stable |
 
 ---
 
@@ -369,7 +387,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
 - men-specific margin regression, probability conversion, and dynamic temperature scaling
 
-**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the frozen leaders (`ARCH-01` men, `ARCH-04` women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `ARCH-04B` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
 
 ### 4.4 Round-Group Modeling Strategy
 
@@ -383,9 +401,84 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 
 **Counter-hypothesis:** Sample size within a single round is small (~32 games per season per league). Splitting by round group reduces training data per model and may increase variance more than it reduces bias.
 
-**Experiment gate:** Do not split by round group unless ARCH-RG experiments (§9.1) show flat-Brier improvement on `R1` without meaningful degradation on `R2+` in 2023–2024 CV. The unified per-league model is the default.
+**Experiment gate:** Do not split by round group unless `ARCH-RG` or `LATE-ARCH-RG` experiments (§9.1) show flat-Brier improvement on `R1` without meaningful degradation on `R2+` in 2023–2024 CV. The unified per-league model is the default.
 
-### 4.5 Architecture Experiment Gates
+### 4.5 Late Challenger Queue
+
+The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue below governs **late challenger work only**. These challengers are still part of `PLAN-002`; they do not justify a new `PLAN-003` unless the work expands into a separate post-deadline research program with a different success criterion.
+
+**Why this stays in PLAN-002:**
+- same competition target
+- same held-out flat-Brier evaluation policy
+- same frozen leaders as the benchmark to beat
+- same operational endpoint: a single Stage 2 submission
+
+**Operating rule for late challengers:** every challenger must beat the current frozen leader for its league on the same held-out flat-Brier protocol before it advances. Use 2025 sanity checks before promotion if the challenger beats the 2023–2024 window.
+
+**Guardrail for `data/reference`:** benchmark probabilities, benchmark-derived matchup likelihood fields, and benchmark feature columns are diagnostic-only assets. They may be used for comparison, gap analysis, bucket targeting, and challenger hypothesis formation, but not as direct supervised targets, leakage-prone training features, or replacement model-selection metrics.
+
+**Current frozen leaders to beat:**
+- Men: generalization-tuned reference-style margin model
+  - MLflow run: `337d3b992b884dbb800c078561d37622`
+  - 2023–2024 flat Brier: `0.195566`
+- Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
+  - MLflow run: `ba0a02b8c8bc404089bdd2de7fe9a917`
+  - 2023–2024 flat Brier: `0.132193`
+
+#### Tier 1 — Highest-value late challengers
+
+| Rank | ID | Challenger | League | Expected Payoff | Effort | Why it is next |
+|---|---|---|---|---|---|---|
+| 1 | LATE-ARCH-RG-07 | Routed `R1` vs `R2+` men model | M | High | Medium | Men still show the clearest persistent `R2+` weakness; calibration-only adjustment was not enough |
+| 2 | LATE-ARCH-RG-08 | Routed `R1` vs `R2+` women model | W | Medium | Low-Medium | Women may still benefit from stage-specific coefficient weighting even though calibration-only changes did not win |
+| 3 | LATE-RATE-01 | Improved men latent strength model | M | High | Medium-High | The best men gains so far came from better strength estimation, not broader final-model complexity |
+| 4 | LATE-RATE-02 | Improved women latent strength model | W | Medium-High | Medium-High | Women may be closer to their ceiling on simple calibration tweaks than on upstream strength quality |
+
+#### Tier 2 — External-data challengers
+
+| Rank | ID | Challenger | League | Expected Payoff | Effort | Primary dataset | Why it matters |
+|---|---|---|---|---|---|---|---|
+| 5 | LATE-MKT-01 | Market-implied odds prior / calibration feature | M+W | Very High | High | `data/processed/betexplorer/` | Market odds are a compact summary of public strength and matchup information; especially useful for later rounds |
+| 6 | LATE-EXT-01 | Men external benchmark-guided challenger | M | Medium-High | Medium | `data/reference/` | Use benchmark all-pairs outputs and features to identify where the local men model still lags and target those cells |
+| 7 | LATE-EXT-02 | Women external benchmark-guided challenger | W | Medium | Medium | `data/reference/` | Use benchmark comparison to isolate round/bucket cells where women still trail the reference |
+| 8 | LATE-EXT-03 | ESPN-derived advanced situational features | M+W | Medium-High | High | `data/processed/espn/` | Richer possessions, four factors, player/game context, and situational form can improve latent rating quality |
+
+#### Tier 3 — Representation-learning challengers
+
+| Rank | ID | Challenger | League | Expected Payoff | Effort | Why lower priority |
+|---|---|---|---|---|---|---|
+| 9 | LATE-EMB-01 | Men team embeddings from regular-season game graph | M | Medium | High | Useful if treated as a latent-strength feature generator, but slower to build and validate |
+| 10 | LATE-EMB-02 | Women team embeddings from regular-season game graph | W | Medium | High | Same concept, but women likely benefit more first from better upstream data/rating construction |
+| 11 | LATE-NN-01 | End-to-end shallow neural tournament model | M+W | Low-Medium | High | Least attractive before deadline; calibration and overfitting risk are high for the likely marginal upside |
+
+#### Dataset-to-challenger mapping
+
+| Dataset | Most useful challenger tasks | Recommended first use |
+|---|---|---|
+| `data/reference/` | `LATE-EXT-01`, `LATE-EXT-02`, routed-model diagnostics, benchmark-cell analysis | Compare local frozen predictions vs benchmark probabilities on the same all-pairs universe, then prioritize the largest recurring men/women round-bucket gaps. Promotion decisions still depend only on played-game held-out flat Brier. |
+| `data/processed/betexplorer/` | `LATE-MKT-01`, later-stage calibration challengers, odds-implied strength priors | Convert opening/closing odds to implied win probabilities and test them first as a simple prior/blend ingredient before building broader market-feature bundles |
+| `data/processed/espn/` | `LATE-RATE-01`, `LATE-RATE-02`, `LATE-EXT-03`, embedding challengers | Build better team-level possessions, four factors, and player-agnostic form summaries rather than immediately training a large model directly on event-level data |
+
+#### Recommended execution order while time remains
+
+1. `LATE-ARCH-RG-07` — routed men `R1` / `R2+` model
+2. `LATE-ARCH-RG-08` — routed women `R1` / `R2+` model
+3. `LATE-RATE-01` — improved men latent strength model
+4. `LATE-RATE-02` — improved women latent strength model
+5. `LATE-MKT-01` — BetExplorer odds prior / calibration challenger if joins are clean
+6. `LATE-EXT-01` / `LATE-EXT-02` — benchmark-guided men/women gap analysis and targeted challenger design
+7. `LATE-EXT-03` — ESPN-derived advanced strength/situational features
+8. `LATE-EMB-01` / `LATE-EMB-02` only if the earlier, simpler challenger classes stall
+
+**Execution note:** `LATE-EXT-01` and `LATE-EXT-02` are benchmark-guided challenger-design tasks, not standalone promotion criteria. They exist to identify high-leverage cells and define the next testable challenger; they do not replace played-game held-out flat-Brier model selection.
+
+#### Stop conditions
+
+- Stop a challenger branch after two consecutive losing variants against the same frozen leader unless a new dataset or materially different modeling class is introduced.
+- Do not promote a challenger on narrative appeal, apparent bracket realism, or benchmark overlap alone.
+- If a challenger improves only bucket-specific diagnostics but not overall flat Brier, keep it as analysis, not as the submission-default model.
+
+### 4.6 Architecture Experiment Gates
 
 Before advancing a model family to ensemble candidacy:
 1. Brier score < seed-diff logistic baseline on 2023–2024 CV
@@ -612,12 +705,17 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
 | Milestone | Date | Action |
 |---|---|---|
 | Selection Sunday | ~2026-03-15 | Bracket seeds published; Stage 2 sample submission released |
-| Stage 2 feature build | 2026-03-15–16 | Compute all 2026 regular-season and matchup features required by the selected frozen model family. At minimum this includes Phase A/B inputs; if the chosen model depends on Phase C or D features, build those exact inference-time features as well. |
-| Stage 2 prep | 2026-03-16–18 | Join 2026 features with 2026 seeds; derive `round_group` and any other bracket-derived inference features required by the selected model; apply the frozen pre-fitted model to Stage 2 matchup pairs |
+| Stage 2 feature build | 2026-03-15–16 | Compute all 2026 regular-season and matchup features required by the selected frozen model family. At minimum this includes Phase A/B inputs; if the chosen model depends on Phase C or D features, build those exact inference-time features as well. If the chosen model depends on external data (for example BetExplorer odds or ESPN-derived features), validate 2026 availability, team mapping, and join completeness before the freeze is considered operational. |
+| Stage 2 prep | 2026-03-16–18 | Join 2026 features with 2026 seeds; derive `round_group` and any other bracket-derived inference features required by the selected model; apply the frozen pre-fitted model to Stage 2 matchup pairs. External-data-dependent models must pass a live availability and join audit before they are eligible for submission use. |
 | Final submission | 2026-03-18–19 | Upload best model output; select it explicitly before deadline |
 | Hard deadline | 2026-03-19 16:00 UTC | Submission must be selected in Kaggle UI |
 
 **Pre-Selection Sunday work (2026-03-10 to 2026-03-15):** Complete Gates 0–2 entirely. All feature engineering, model training, calibration, and ensemble construction uses historical data. The Stage 2 run is a final application of the already-selected model — not a new training run. The only allowed Stage 2 changes are inference-time feature generation for 2026 data and bracket-derived routing fields required by the chosen frozen model family.
+
+**External-data guardrail:** no BetExplorer- or ESPN-dependent challenger may be promoted to the frozen pair unless:
+- 2026 data is available on the required timeline,
+- team/entity mapping is validated for the 2026 tournament field,
+- join coverage is high enough that the model does not silently fall back on a minority of teams or games.
 
 ### 8.2 Submission Types
 
@@ -629,12 +727,12 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
 
 ### 8.2.1 Gate 3 Freeze
 
-**Frozen model choices entering Gate 3 (2026-03-12):**
+**Frozen model choices entering Gate 3 (updated 2026-03-13):**
 
-- Men: `ARCH-01` seed-diff logistic baseline
-  - MLflow run: `c0ef5d21cbf44cc185edc4ec7b920b43`
-  - 2023-2024 flat Brier: `0.197508`
-  - 2025 holdout run: `c3733a50efc7491586f3060e0dc317b0`
+- Men: generalization-tuned reference-style margin model
+  - MLflow run: `337d3b992b884dbb800c078561d37622`
+  - 2023-2024 flat Brier: `0.195566`
+  - 2025 holdout run: `a11c60d33cde4fd68f7852fc65dda1db`
 
 - Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
   - MLflow run: `ba0a02b8c8bc404089bdd2de7fe9a917`
@@ -657,9 +755,14 @@ Before each submission:
 ### 8.4 Emergency Protocol
 
 If the Stage 2 pipeline breaks after Selection Sunday:
-1. Fall back to the seed-difference logistic baseline — it is always recoverable in <1 hour given that seeds are published
-2. Do not attempt untested code changes under deadline pressure
-3. The seed-diff model is the guaranteed floor; any pipeline complexity beyond that is optional
+1. First fall back to the frozen leaders already selected in this plan:
+   - men: generalization-tuned reference-style margin model
+   - women: `ARCH-04B`
+2. If the frozen-leader path itself is unavailable operationally, fall back to the emergency minimum viable baselines:
+   - men: seed-diff logistic baseline
+   - women: seed-plus-Elo logistic baseline
+3. Do not attempt untested code changes under deadline pressure
+4. The emergency baselines are the guaranteed floor; any pipeline complexity beyond that is optional
 
 ---
 
@@ -688,6 +791,13 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | ARCH-RG-04 | R2+-only logistic (W) | Logistic Regression | Phase A+B+C features | W | Same, women's data | P2 |
 | ARCH-RG-05 | Round-group blend (M) | R1 model + R2+ model, blended by round_group | Phase A+B+C | M | Blending round-group models improves held-out flat Brier by specializing on guaranteed vs later-round games | P2 |
 | ARCH-RG-06 | Round-group blend (W) | R1 model + R2+ model, blended by round_group | Phase A+B+C | W | Same, women's data | P2 |
+| LATE-ARCH-RG-07 | Routed round-group model (M) | Separate routed models | Current frozen men feature family | M | A true routed `R1` vs `R2+` men model improves overall flat Brier where calibration-only adjustments did not | P1 |
+| LATE-ARCH-RG-08 | Routed round-group model (W) | Separate routed models | `ARCH-04B` core features first; add one women-specific feature only if needed | W | Women may benefit from stage-specific coefficient weighting even if unified calibration looks strong | P1 |
+| LATE-RATE-01 | Improved latent strength model (M) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | M | A stronger upstream men strength rating improves tournament probabilities more than another broad classifier | P1 |
+| LATE-RATE-02 | Improved latent strength model (W) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | W | Women still have room for improvement through upstream strength estimation rather than calibration tweaks | P1 |
+| LATE-EMB-01 | Team-embedding challenger (M) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen men features | M | Learned team embeddings capture matchup structure missed by scalar ratings | P3 |
+| LATE-EMB-02 | Team-embedding challenger (W) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen women features | W | Same, women's data | P3 |
+| LATE-NN-01 | End-to-end shallow neural model | Shallow MLP | Best available late-challenger feature set | M+W | A carefully regularized shallow NN improves on linear models without calibration collapse | P4 |
 
 ### 9.2 Feature Experiments
 
@@ -708,6 +818,11 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | FEAT-13 | Women HCA-corrected adjusted efficiency | women_hca_adj_qg_diff | `adj_quality_gap_v10` challenger | Pre-SOS home-court correction improves women's adjusted quality signal | P1 |
 | FEAT-14 | Men situational box-score differentials | d_AstRate, d_FTR, d_TOVr, d_ConfTourneyWR, d_CloseWR1 | `adj_quality_gap_v10` challenger | Richer situational signals improve men's quality model | P2 |
 | FEAT-15 | Women close-game performance | d_CloseWR3 | `adj_quality_gap_v10` challenger | Women's 3-point close-game win rate adds signal beyond Elo and quality gap | P2 |
+| LATE-FEAT-16 | BetExplorer opening odds prior | market_open_prob | Frozen leader challenger | Opening market odds provide a compact pregame strength prior that improves flat Brier | P1 |
+| LATE-FEAT-17 | BetExplorer closing odds prior | market_close_prob | Frozen leader challenger | Closing market odds provide a stronger calibration anchor than internal ratings alone | P1 |
+| LATE-FEAT-18 | ESPN-derived four-factor ratings | eFG, TOV, ORB, FTR composites | `LATE-RATE-01` / `LATE-RATE-02` | Richer team quality estimates from ESPN box scores improve latent strength modeling | P1 |
+| LATE-FEAT-19 | ESPN-derived player-availability / rotation proxies | minutes continuity, top-player usage, lineup stability | `LATE-RATE-01` / `LATE-RATE-02` | Lineup continuity and high-usage player context add signal beyond team aggregates | P2 |
+| LATE-FEAT-20 | Reference-model delta diagnostics | benchmark_prob_delta, benchmark_bucket_delta (diagnostic-only; not trainable features) | `LATE-EXT-01` / `LATE-EXT-02` | Systematic differences from the benchmark identify specific cells worth modeling, even if the benchmark fields themselves are not used directly for training | P2 |
 
 ### 9.3 Combination and Validation Experiments
 
@@ -727,6 +842,9 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | VAL-03 | Bracket simulator diagnostics | Best current model | Deterministic bracket DP | Bracket structure does not expose unexpected calibration risk in high-likelihood buckets | P1 |
 | VAL-04 | Women's parity check | ARCH-06 vs ARCH-08 | CV by seed pair | Women's model appropriately reflects higher parity | P1 |
 | VAL-05 | `adj_quality_gap_v10` benchmark comparison | Best local challenger vs documented benchmark | LOSO played-game Brier | Local challenger approaches or exceeds the documented benchmark on the comparable metric | P1 |
+| LATE-VAL-06 | Market-data coverage and leakage audit | BetExplorer joins by season/league | Join-rate table + held-out audit | Market odds can be used without silent team-mapping leakage or severe season gaps | P1 |
+| LATE-VAL-07 | ESPN feature stability audit | ESPN-derived team features | Season-by-season null/coverage profile | ESPN-derived features are stable enough across seasons to support a deadline-safe challenger | P1 |
+| LATE-VAL-08 | Benchmark all-pairs gap analysis | Local frozen leaders vs `data/reference/` | All-matchups comparison by round/bucket | Benchmark comparisons identify a small number of recurring, high-leverage cells worth targeted challenger work | P1 |
 
 ---
 
@@ -756,7 +874,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
 - [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
-- [ ] Men frozen leader: `ARCH-01`
+- [ ] Men frozen leader: generalization-tuned reference-style margin model
 - [ ] Women frozen leader: `ARCH-04B`
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
