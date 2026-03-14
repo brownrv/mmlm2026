@@ -6,7 +6,7 @@ Primary source: `docs/march-machine-learning-mania-2026 - Overview and Data and 
 
 Frozen models entering Stage 2:
 - Men: generalization-tuned reference margin model
-- Women: `ARCH-04B` tuned carryover Elo + seed logistic baseline
+- Women: `COOPER-ARCH-01 + COOPER-ARCH-04 v1` routed women model with ESPN four-factor and conference-rank features
 
 ## Submission Mechanics
 

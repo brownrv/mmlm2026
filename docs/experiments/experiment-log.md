@@ -3,6 +3,40 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — Refreshed-data frozen pair end-to-end dry run
+
+Status: Completed
+
+Hypothesis:
+- After the revised Kaggle detailed-data refresh, the actual frozen submission builder should still produce a valid combined submission and bracket artifacts when run end to end on the historical 2025 Stage 2 sample.
+
+Dependencies:
+- model:men_reference_margin_generalization_v1
+- model:women_cooper_arch_01_04_v1
+- data:revised_detailed_results_2021_2026_v1
+- tool:frozen_submission_builder_v1
+
+Result:
+- The frozen submission path was out of sync with the documented women freeze and still used an old seed-plus-Elo logistic path in `frozen_models.py`; this was corrected to match the current routed women + ESPN four-factor + conference-rank COOPER Elo freeze.
+- The men frozen path was also updated to consume the revised `2021-2026` detailed regular-season file when present.
+- Historical dry run completed successfully with the refreshed data:
+  - submission: `data/submissions/2025_gate3-dryrun-2025-refresh_submission.csv`
+  - validated row count: `4556`
+  - men rows: `2278`
+  - women rows: `2278`
+- Artifact bundle was written successfully under `data/submissions/2025_gate3-dryrun-2025-refresh_artifacts/`.
+- Conclusion: the current frozen pair is now aligned with the actual production submission builder and reconfirmed end to end on the refreshed data path.
+
+Re-test if:
+- The official Selection Sunday data release differs materially from the current supplemental revised detailed files.
+- The frozen women model changes again before final Stage 2 submission.
+
+Related:
+- [build_frozen_submission.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/build_frozen_submission.py)
+- [frozen_models.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/submission/frozen_models.py)
+- [COMPETITION_OPERATIONS.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/COMPETITION_OPERATIONS.md)
+
+---
 ## 2026-03-14 — Revised detailed-data refresh gate: targeted reruns
 
 Status: Completed
