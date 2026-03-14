@@ -90,6 +90,7 @@ def compute_tournament_only_elo_ratings(
                     scale=scale,
                     mov_alpha=0.0,
                     weight=1.0,
+                    winner_bonus=0.0,
                 )
         previous_ratings = season_ratings
 
@@ -108,6 +109,9 @@ def compute_elo_momentum_features(
     scale: float = 400.0,
     mov_alpha: float = 0.0,
     weight_regular: float = 1.0,
+    winner_bonus: float = 0.0,
+    early_k_boost_games: int = 0,
+    early_k_multiplier: float = 1.0,
 ) -> pd.DataFrame:
     """Compute team-season Elo momentum as end-of-season Elo minus mid-season Elo."""
     mid_ratings = compute_pre_tourney_elo_ratings(
@@ -121,6 +125,9 @@ def compute_elo_momentum_features(
         mov_alpha=mov_alpha,
         weight_regular=weight_regular,
         weight_tourney=1.0,
+        winner_bonus=winner_bonus,
+        early_k_boost_games=early_k_boost_games,
+        early_k_multiplier=early_k_multiplier,
     ).rename(columns={"elo": "mid_elo"})
     end_ratings = compute_pre_tourney_elo_ratings(
         regular_season_results,
@@ -133,6 +140,9 @@ def compute_elo_momentum_features(
         mov_alpha=mov_alpha,
         weight_regular=weight_regular,
         weight_tourney=1.0,
+        winner_bonus=winner_bonus,
+        early_k_boost_games=early_k_boost_games,
+        early_k_multiplier=early_k_multiplier,
     ).rename(columns={"elo": "end_elo"})
 
     momentum = end_ratings.merge(
@@ -158,6 +168,9 @@ def compute_pre_tourney_elo_ratings(
     mov_alpha: float = 0.0,
     weight_regular: float = 1.0,
     weight_tourney: float = 1.0,
+    winner_bonus: float = 0.0,
+    early_k_boost_games: int = 0,
+    early_k_multiplier: float = 1.0,
 ) -> pd.DataFrame:
     """Compute pre-tournament Elo snapshots with optional carryover and MOV weighting."""
     required = {"Season", "DayNum", "WTeamID", "LTeamID", "WLoc"}
@@ -205,17 +218,29 @@ def compute_pre_tourney_elo_ratings(
             else initial_rating
             for team in sorted(season_teams)
         }
+        season_game_counts = {team: 0 for team in season_ratings}
 
         for _, row in regular_games.iterrows():
+            winner = int(row["WTeamID"])
+            loser = int(row["LTeamID"])
             _apply_elo_update(
                 season_ratings,
                 row,
-                k_factor=k_factor,
+                k_factor=_effective_k_factor(
+                    base_k_factor=k_factor,
+                    winner_games=season_game_counts[winner],
+                    loser_games=season_game_counts[loser],
+                    early_k_boost_games=early_k_boost_games,
+                    early_k_multiplier=early_k_multiplier,
+                ),
                 home_advantage=home_advantage,
                 scale=scale,
                 mov_alpha=mov_alpha,
                 weight=weight_regular,
+                winner_bonus=winner_bonus,
             )
+            season_game_counts[winner] += 1
+            season_game_counts[loser] += 1
 
         for team_id, rating in season_ratings.items():
             rows.append({"Season": season, "TeamID": team_id, "elo": float(rating)})
@@ -230,6 +255,7 @@ def compute_pre_tourney_elo_ratings(
                     scale=scale,
                     mov_alpha=mov_alpha,
                     weight=weight_tourney,
+                    winner_bonus=winner_bonus,
                 )
         previous_ratings = season_ratings
 
@@ -576,6 +602,7 @@ def _apply_elo_update(
     scale: float,
     mov_alpha: float,
     weight: float,
+    winner_bonus: float,
 ) -> None:
     winner = int(row["WTeamID"])
     loser = int(row["LTeamID"])
@@ -592,12 +619,28 @@ def _apply_elo_update(
     )
     mov_multiplier = 1.0
     if mov_alpha > 0.0 and {"WScore", "LScore"}.issubset(row.index):
-        margin = max(0.0, float(row["WScore"]) - float(row["LScore"]))
+        margin = max(0.0, float(row["WScore"]) - float(row["LScore"]) + winner_bonus)
         mov_multiplier = 1.0 + margin / mov_alpha
 
     delta = weight * k_factor * mov_multiplier * (1.0 - expected_winner)
     ratings[winner] = winner_rating + delta
     ratings[loser] = max(loser_rating - delta, 1.0)
+
+
+def _effective_k_factor(
+    *,
+    base_k_factor: float,
+    winner_games: int,
+    loser_games: int,
+    early_k_boost_games: int,
+    early_k_multiplier: float,
+) -> float:
+    if early_k_boost_games <= 0 or early_k_multiplier == 1.0:
+        return float(base_k_factor)
+
+    winner_multiplier = float(early_k_multiplier) if winner_games < early_k_boost_games else 1.0
+    loser_multiplier = float(early_k_multiplier) if loser_games < early_k_boost_games else 1.0
+    return float(base_k_factor) * ((winner_multiplier + loser_multiplier) / 2.0)
 
 
 def _rounds_from_seed_pairs(

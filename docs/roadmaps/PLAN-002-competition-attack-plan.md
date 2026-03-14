@@ -429,7 +429,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
 - men-specific margin regression, probability conversion, and dynamic temperature scaling
 
-**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-FEAT-29 v1` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `COOPER-ARCH-01 + COOPER-ARCH-04 v1` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
 
 ### 4.4 Round-Group Modeling Strategy
 
@@ -463,10 +463,10 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 - Men: generalization-tuned reference-style margin model
   - MLflow run: `337d3b992b884dbb800c078561d37622`
   - 2023–2024 flat Brier: `0.195566`
-- Women: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
-  - MLflow run name: `late-feat-29-women-conf-rank`
-  - 2023–2024 flat Brier: `0.130381`
-  - 2025 sanity-check run name: `val-01-2025-holdout-women-late-feat-29`
+- Women: `COOPER-ARCH-01 + COOPER-ARCH-04 v1` routed women + ESPN four-factor + conference-rank model with COOPER Elo replacement
+  - MLflow run name: `cooper-arch-01-04-women`
+  - 2023–2024 flat Brier: `0.129201`
+  - 2025 sanity-check run name: `val-01-2025-holdout-women-cooper-arch-01-04`
 
 #### Tier 1 — Highest-value late challengers
 
@@ -897,17 +897,17 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
 
 ### 8.2.1 Gate 3 Freeze
 
-**Frozen model choices entering Gate 3 (updated 2026-03-13):**
+**Frozen model choices entering Gate 3 (updated 2026-03-14):**
 
 - Men: generalization-tuned reference-style margin model
   - MLflow run: `337d3b992b884dbb800c078561d37622`
   - 2023-2024 flat Brier: `0.195566`
   - 2025 holdout run: `a11c60d33cde4fd68f7852fc65dda1db`
 
-- Women: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
-  - MLflow run name: `late-feat-29-women-conf-rank`
-  - 2023-2024 flat Brier: `0.130381`
-  - 2025 holdout run name: `val-01-2025-holdout-women-late-feat-29`
+- Women: `COOPER-ARCH-01 + COOPER-ARCH-04 v1` routed women + ESPN four-factor + conference-rank model with COOPER Elo replacement
+  - MLflow run name: `cooper-arch-01-04-women`
+  - 2023-2024 flat Brier: `0.129201`
+  - 2025 holdout run name: `val-01-2025-holdout-women-cooper-arch-01-04`
 
 **Gate 3 operating rule:** these are the submission-default models unless a later Gate 3 challenger beats them on the same held-out flat-Brier protocol. No model is promoted during Stage 2 inference preparation for subjective reasons, additional complexity, or leaderboard curiosity alone.
 
@@ -927,7 +927,7 @@ Before each submission:
 If the Stage 2 pipeline breaks after Selection Sunday:
 1. First fall back to the frozen leaders already selected in this plan:
    - men: generalization-tuned reference-style margin model
-   - women: `LATE-FEAT-29 v1`
+   - women: `COOPER-ARCH-01 + COOPER-ARCH-04 v1`
 2. If the frozen-leader path itself is unavailable operationally, fall back to the emergency minimum viable baselines:
    - men: seed-diff logistic baseline
    - women: seed-plus-Elo logistic baseline
@@ -962,7 +962,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | ARCH-RG-05 | Round-group blend (M) | R1 model + R2+ model, blended by round_group | Phase A+B+C | M | Blending round-group models improves held-out flat Brier by specializing on guaranteed vs later-round games | P2 |
 | ARCH-RG-06 | Round-group blend (W) | R1 model + R2+ model, blended by round_group | Phase A+B+C | W | Same, women's data | P2 |
 | LATE-ARCH-RG-07 | Routed round-group model (M) | Separate routed models | Current frozen men feature family | M | A true routed `R1` vs `R2+` men model improves overall flat Brier where calibration-only adjustments did not | P1 |
-| LATE-ARCH-RG-08 | Routed round-group model (W) | Separate routed models | Current frozen women feature family (LATE-FEAT-29 v1 feature set); add one women-specific feature only if needed | W | Women may benefit from stage-specific coefficient weighting even if unified calibration looks strong | P1 |
+| LATE-ARCH-RG-08 | Routed round-group model (W) | Separate routed models | Current frozen women feature family (COOPER-ARCH-01 + COOPER-ARCH-04 v1 feature set); add one women-specific feature only if needed | W | Women may benefit from stage-specific coefficient weighting even if unified calibration looks strong | P1 |
 | LATE-RATE-01 | Improved latent strength model (M) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | M | A stronger upstream men strength rating improves tournament probabilities more than another broad classifier | P1 |
 | LATE-RATE-02 | Improved latent strength model (W) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | W | Women still have room for improvement through upstream strength estimation rather than calibration tweaks | P1 |
 | LATE-EMB-01 | Team-embedding challenger (M) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen men features | M | Learned team embeddings capture matchup structure missed by scalar ratings | P3 |
@@ -971,7 +971,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-ARCH-DW-01 | Decay-weighted training (M+W) | Any base learner with exponential sample weights | Current best feature family per league | M+W | Recency-weighted training (§2.1 notes this as a possibility but no experiment exists) reduces the influence of older seasons and may improve generalization; decay tested at 0.9 (men) and 0.93 (women) | P2 |
 | LATE-ARCH-META-01 | Logit-Ridge meta-learner (M+W) | Ridge regression in logit space on OOF base learner probabilities | OOF logits from current best ensemble members | M+W | Ridge in log-odds space emphasizes tail calibration where Brier loss is steepest; alpha tuned via leave-seasons-out CV; alternative to no-intercept logistic in COMBO-03/04 Tier 2 | P2 |
 | LATE-ARCH-CB-01 | CatBoost base learner (M+W) | CatBoost | Current best feature family per league | M+W | Ordered boosting and categorical handling adds diverse base learner predictions; reference notebook shows CatBoost as highest meta-weight ensemble member (0.359 for men); warranted only if diversity audit shows high OOF correlation among current members | P3 |
-| LATE-ARCH-MW-01 | Unified M+W model with gender flag | XGBoost/LightGBM | All Phase A+B features + `men_women` binary flag (1=M, 0=W); nullable men-only features (Massey, coach) set to 0 or league-median for women rows | M+W | Pooling men's and women's tournament data roughly doubles the training sample; XGBoost learns gender-specific patterns via the `men_women` flag. **Promotion requires all three**: (1) combined M+W flat Brier beats COMBO-05 on 2023–2024 CV; (2) men's Brier ≤ men frozen leader (0.195566); (3) women's Brier ≤ women frozen leader (0.130381). This is a challenger to committed ADR 0004 — promotion also requires an explicit update to `docs/decisions/0004-men-women-tournament-modeling-strategy.md`. | P3 |
+| LATE-ARCH-MW-01 | Unified M+W model with gender flag | XGBoost/LightGBM | All Phase A+B features + `men_women` binary flag (1=M, 0=W); nullable men-only features (Massey, coach) set to 0 or league-median for women rows | M+W | Pooling men's and women's tournament data roughly doubles the training sample; XGBoost learns gender-specific patterns via the `men_women` flag. **Promotion requires all three**: (1) combined M+W flat Brier beats COMBO-05 on 2023–2024 CV; (2) men's Brier ≤ men frozen leader (0.195566); (3) women's Brier ≤ women frozen leader (0.129201). This is a challenger to committed ADR 0004 — promotion also requires an explicit update to `docs/decisions/0004-men-women-tournament-modeling-strategy.md`. | P3 |
 | LATE-EXT-04 | Tournament-progression forecast challenger (M+W) | Three sub-approaches — (A) direct H2H blend via `goto_conversion`; (B) conditional-strength features as GBT inputs; (C) calibration anchor / shrinkage prior | External bracket-simulation probabilities (`rd1_win`–`rd6_win` per team; **preferred source: COOPER, Silver Bulletin** — injury-adjusted, bracket-simulates 'hot', blended 5/8 COOPER + 3/8 KenPom (M) / Her Hoop Stats (W); verify M+W coverage before Selection Sunday; fallback: ESPN, T-Rank, teamrankings.com; 538 no longer publishes); team-name join via `data/TeamSpellings.csv` | M+W | Bracket-aware pre-tournament progression probabilities are orthogonal to all internal Elo/GBT signals and encode seed draw, opponent difficulty, and simulation-derived team strength in a single compact vector; COOPER's 'hot' simulation (ratings update during bracket simulation so later-round probabilities reflect simulated early outcomes) makes it a higher-quality source than static pre-tournament rating systems; `goto_conversion` corrects favourite-longshot bias in the conversion to H2H probabilities. **Conditional on data availability confirmed post-Selection Sunday — skip entirely if clean M+W coverage not secured by 2026-03-16.** Attempt sub-approach A first; promote if flat Brier beats frozen leader on 2023–2024 CV. | P1 (if data secured) |
 | COOPER-ARCH-01 | Win-bonus Elo variant (M+W) | Elo (modified update rule) | All Phase A+B features using `elo_diff` from win-bonus Elo | M+W | The standard Elo update uses raw scoring margin; adding +6 points to the winner's score before updating (empirically optimal in COOPER, derived from minimizing prediction error) corrects for the asymmetric information value of winning vs losing regardless of margin; COOPER reports ~1% improvement in win-prediction accuracy; test as a drop-in replacement for `elo_diff` in existing models without any other feature change | P2 |
 | COOPER-ARCH-04 | Variable k-factor Elo variant (M+W) | Elo (modified k-factor schedule) | `elo_diff` from variable k-factor Elo; can be combined with COOPER-ARCH-01 in a single run | M+W | Use 2× base k-factor for each team's first ~15 games of the season, linearly decaying to the base k thereafter; early-season games reveal disproportionately more information relative to a crude preseason prior, but a too-high k mid-season causes zig-zagging; COOPER uses k=55 base (vs SBCB's k=38), suggesting our current k may be too conservative | P2 |
@@ -1069,7 +1069,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
 - [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
 - [ ] Men frozen leader: generalization-tuned reference-style margin model
-- [ ] Women frozen leader: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
+- [ ] Women frozen leader: `COOPER-ARCH-01 + COOPER-ARCH-04 v1` routed women + ESPN four-factor + conference-rank model with COOPER Elo replacement
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
 - [ ] Per-bucket and `R1/R2+` Brier decomposition reviewed; no unexpected degradation on guaranteed `R1` games

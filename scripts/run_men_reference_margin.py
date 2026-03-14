@@ -173,6 +173,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--elo-mov-alpha", type=float, default=6.5450)
     parser.add_argument("--elo-weight-regular", type=float, default=1.4674)
     parser.add_argument("--elo-weight-tourney", type=float, default=0.8204)
+    parser.add_argument("--elo-winner-bonus", type=float, default=0.0)
+    parser.add_argument("--elo-early-k-boost-games", type=int, default=0)
+    parser.add_argument("--elo-early-k-multiplier", type=float, default=1.0)
     return parser
 
 
@@ -213,6 +216,9 @@ def main() -> int:
         mov_alpha=args.elo_mov_alpha,
         weight_regular=args.elo_weight_regular,
         weight_tourney=args.elo_weight_tourney,
+        winner_bonus=args.elo_winner_bonus,
+        early_k_boost_games=args.elo_early_k_boost_games,
+        early_k_multiplier=args.elo_early_k_multiplier,
     )
     team_features = build_phase_ab_team_features(
         regular_season,
@@ -244,6 +250,9 @@ def main() -> int:
             scale=args.elo_scale,
             mov_alpha=args.elo_mov_alpha,
             weight_regular=args.elo_weight_regular,
+            winner_bonus=args.elo_winner_bonus,
+            early_k_boost_games=args.elo_early_k_boost_games,
+            early_k_multiplier=args.elo_early_k_multiplier,
         )[["Season", "TeamID", "elo_momentum"]]
         team_features = team_features.merge(
             elo_momentum,
@@ -1027,6 +1036,9 @@ def _log_mlflow_run(
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,
+                "elo_winner_bonus": args.elo_winner_bonus,
+                "elo_early_k_boost_games": args.elo_early_k_boost_games,
+                "elo_early_k_multiplier": args.elo_early_k_multiplier,
                 "temperature": temperature,
                 "alpha": alpha,
             }

@@ -230,6 +230,81 @@ def test_compute_elo_momentum_features_compares_mid_and_end_snapshots() -> None:
     assert team20["elo_momentum"] > 0.0
 
 
+def test_compute_pre_tourney_elo_ratings_supports_winner_bonus() -> None:
+    regular = pd.DataFrame(
+        {
+            "Season": [2025],
+            "DayNum": [10],
+            "WTeamID": [10],
+            "LTeamID": [20],
+            "WScore": [70],
+            "LScore": [65],
+            "WLoc": ["N"],
+        }
+    )
+
+    baseline = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        scale=400.0,
+        mov_alpha=10.0,
+    )
+    boosted = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        scale=400.0,
+        mov_alpha=10.0,
+        winner_bonus=6.0,
+    )
+
+    baseline_winner = baseline.loc[baseline["TeamID"] == 10, "elo"].iloc[0]
+    boosted_winner = boosted.loc[boosted["TeamID"] == 10, "elo"].iloc[0]
+    assert boosted_winner > baseline_winner
+
+
+def test_compute_pre_tourney_elo_ratings_supports_early_k_boost() -> None:
+    regular = pd.DataFrame(
+        {
+            "Season": [2025],
+            "DayNum": [10],
+            "WTeamID": [10],
+            "LTeamID": [20],
+            "WScore": [70],
+            "LScore": [60],
+            "WLoc": ["N"],
+        }
+    )
+
+    baseline = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        scale=400.0,
+        mov_alpha=0.0,
+    )
+    boosted = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        scale=400.0,
+        mov_alpha=0.0,
+        early_k_boost_games=1,
+        early_k_multiplier=2.0,
+    )
+
+    baseline_gap = abs(
+        baseline.loc[baseline["TeamID"] == 10, "elo"].iloc[0]
+        - baseline.loc[baseline["TeamID"] == 20, "elo"].iloc[0]
+    )
+    boosted_gap = abs(
+        boosted.loc[boosted["TeamID"] == 10, "elo"].iloc[0]
+        - boosted.loc[boosted["TeamID"] == 20, "elo"].iloc[0]
+    )
+    assert boosted_gap > baseline_gap
+
+
 def test_attach_secondary_elo_features_adds_prefixed_columns() -> None:
     frame = pd.DataFrame(
         {

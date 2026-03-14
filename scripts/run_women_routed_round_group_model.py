@@ -18,7 +18,9 @@ from mmlm2026.evaluation.validation import (
 from mmlm2026.features.elo import (
     attach_secondary_elo_features,
     build_elo_seed_submission_features,
+    build_elo_seed_tourney_features,
     compute_elo_momentum_features,
+    compute_pre_tourney_elo_ratings,
     compute_tournament_only_elo_ratings,
 )
 from mmlm2026.features.espn import load_espn_women_four_factor_strength_features
@@ -132,13 +134,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.9,
         help="Per-season exponential decay base for training weights.",
     )
+    parser.add_argument("--elo-winner-bonus", type=float, default=0.0)
+    parser.add_argument("--elo-early-k-boost-games", type=int, default=0)
+    parser.add_argument("--elo-early-k-multiplier", type=float, default=1.0)
     return parser
 
 
 def main() -> int:
     args = _build_parser().parse_args()
     context = load_frozen_women_context(args.data_dir)
-    feature_table = context.training.copy()
+    elo_ratings = _build_women_elo_ratings(context, args)
+    feature_table = (
+        build_elo_seed_tourney_features(context.results, context.seeds, elo_ratings, league="W")
+        if _uses_custom_women_elo(args)
+        else context.training.copy()
+    )
     feature_cols = ["seed_diff", "elo_diff"]
     if args.include_tourney_elo:
         tourney_elo = compute_tournament_only_elo_ratings(context.results, seeds=context.seeds)
@@ -160,6 +170,9 @@ def main() -> int:
             scale=WOMEN_ELO_PARAMS["scale"],
             mov_alpha=WOMEN_ELO_PARAMS["mov_alpha"],
             weight_regular=WOMEN_ELO_PARAMS["weight_regular"],
+            winner_bonus=args.elo_winner_bonus,
+            early_k_boost_games=args.elo_early_k_boost_games,
+            early_k_multiplier=args.elo_early_k_multiplier,
         )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
         feature_table = attach_secondary_elo_features(
             feature_table,
@@ -349,7 +362,7 @@ def main() -> int:
     infer_frame = build_elo_seed_submission_features(
         infer_rows[["Season", "LowTeamID", "HighTeamID"]],
         context.seeds,
-        context.elo_ratings,
+        elo_ratings,
         league="W",
     )
     if args.include_tourney_elo:
@@ -371,6 +384,9 @@ def main() -> int:
             scale=WOMEN_ELO_PARAMS["scale"],
             mov_alpha=WOMEN_ELO_PARAMS["mov_alpha"],
             weight_regular=WOMEN_ELO_PARAMS["weight_regular"],
+            winner_bonus=args.elo_winner_bonus,
+            early_k_boost_games=args.elo_early_k_boost_games,
+            early_k_multiplier=args.elo_early_k_multiplier,
         )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
         infer_frame = attach_secondary_elo_features(
             infer_frame,
@@ -696,6 +712,36 @@ def _season_decay_weights(seasons: pd.Series, *, decay_base: float) -> pd.Series
     return weights.astype(float)
 
 
+def _uses_custom_women_elo(args: argparse.Namespace) -> bool:
+    return (
+        args.elo_winner_bonus != 0.0
+        or args.elo_early_k_boost_games > 0
+        or args.elo_early_k_multiplier != 1.0
+    )
+
+
+def _build_women_elo_ratings(context, args: argparse.Namespace) -> pd.DataFrame:
+    if not _uses_custom_women_elo(args):
+        return context.elo_ratings
+
+    return compute_pre_tourney_elo_ratings(
+        context.regular_season,
+        tourney_results=context.results,
+        day_cutoff=134,
+        initial_rating=WOMEN_ELO_PARAMS["initial_rating"],
+        k_factor=WOMEN_ELO_PARAMS["k_factor"],
+        home_advantage=WOMEN_ELO_PARAMS["home_advantage"],
+        season_carryover=WOMEN_ELO_PARAMS["season_carryover"],
+        scale=WOMEN_ELO_PARAMS["scale"],
+        mov_alpha=WOMEN_ELO_PARAMS["mov_alpha"],
+        weight_regular=WOMEN_ELO_PARAMS["weight_regular"],
+        weight_tourney=WOMEN_ELO_PARAMS["weight_tourney"],
+        winner_bonus=args.elo_winner_bonus,
+        early_k_boost_games=args.elo_early_k_boost_games,
+        early_k_multiplier=args.elo_early_k_multiplier,
+    )
+
+
 def _attach_team_scalar_feature(
     frame: pd.DataFrame,
     team_feature: pd.DataFrame,
@@ -813,6 +859,9 @@ def _log_mlflow_run(
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,
+                "elo_winner_bonus": args.elo_winner_bonus,
+                "elo_early_k_boost_games": args.elo_early_k_boost_games,
+                "elo_early_k_multiplier": args.elo_early_k_multiplier,
             }
         )
         mlflow.log_metrics(

@@ -3,6 +3,41 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — COOPER-ARCH-01 + COOPER-ARCH-04 v1: win-bonus Elo plus early-season K boost
+
+Status: Completed
+
+Hypothesis:
+- A COOPER-style Elo variant that gives the winner bonus margin credit and boosts K early in the season may improve upstream team strength enough to beat the current frozen men and women leader families as a drop-in Elo replacement.
+
+Dependencies:
+- feature:elo_tuned_carryover_men_v1
+- feature:late_feat_29_conf_pct_rank_v1
+- feature:late_rate_02_espn_four_factor_v1
+- arch:cooper_arch_01_v1
+- arch:cooper_arch_04_v1
+
+MLflow:
+- Run name: `cooper-arch-01-04-men`
+- Run name: `cooper-arch-01-04-women`
+- Run name: `val-01-2025-holdout-women-cooper-arch-01-04`
+
+Result:
+- Men scored `flat_brier = 0.197457` and `log_loss = 0.581158`, which is clearly worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.129201` and `log_loss = 0.397335` on the 2023-2024 held-out window, beating the current frozen women leader `0.130381`.
+- The 2025 sanity check also passed: `val-01-2025-holdout-women-cooper-arch-01-04` scored `flat_brier = 0.103865`, `log_loss = 0.328835`, `r1_brier = 0.077126`, and `r2plus_brier = 0.131466`.
+- Conclusion: the combined COOPER Elo variant is a loser for men but a valid new women leader candidate on the current routed women + ESPN four-factor + conference-rank path.
+
+Re-test if:
+- The women routed model changes enough that Elo no longer acts as a drop-in replacement.
+- A conference-mean reversion Elo branch (`COOPER-ARCH-03`) is added and needs comparison against this combined COOPER baseline.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [elo.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/elo.py)
+
+---
 ## YYYY-MM-DD — <experiment title>
 
 Status: Proposed | Running | Completed | Revisit | Retired
