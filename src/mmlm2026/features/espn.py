@@ -608,10 +608,10 @@ def _match_espn_games_to_kaggle(
 
 
 def _normalize_espn_id(value: object) -> str | None:
-    if value is None or pd.isna(value):
+    if value is None:
         return None
     text = str(value).strip()
-    if not text:
+    if not text or text.lower() in {"nan", "<na>", "none"}:
         return None
     if text.endswith(".0"):
         text = text[:-2]

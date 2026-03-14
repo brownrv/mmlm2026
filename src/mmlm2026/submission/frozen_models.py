@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -64,36 +66,25 @@ class FrozenWomenContext:
     training: pd.DataFrame
 
 
-def _load_men_reference_helpers():
+def _load_men_reference_helpers() -> dict[str, Any]:
     scripts_dir = Path(__file__).resolve().parents[3] / "scripts"
     scripts_path = str(scripts_dir)
     if scripts_path not in sys.path:
         sys.path.append(scripts_path)
 
-    from run_men_reference_margin import (
-        _apply_temperature,
-        _blend_probabilities,
-        _drop_required_missing,
-        _elo_probabilities,
-        _estimate_residual_sigma,
-        _fit_reference_calibration,
-        _margin_to_probability,
-        _mirror_margin_training_rows,
-        _prepare_reference_feature_frame,
-        build_margin_pipeline,
-    )
+    module = importlib.import_module("run_men_reference_margin")
 
     return {
-        "apply_temperature": _apply_temperature,
-        "blend_probabilities": _blend_probabilities,
-        "drop_required_missing": _drop_required_missing,
-        "elo_probabilities": _elo_probabilities,
-        "estimate_residual_sigma": _estimate_residual_sigma,
-        "fit_reference_calibration": _fit_reference_calibration,
-        "margin_to_probability": _margin_to_probability,
-        "mirror_margin_training_rows": _mirror_margin_training_rows,
-        "prepare_reference_feature_frame": _prepare_reference_feature_frame,
-        "build_margin_pipeline": build_margin_pipeline,
+        "apply_temperature": module._apply_temperature,
+        "blend_probabilities": module._blend_probabilities,
+        "drop_required_missing": module._drop_required_missing,
+        "elo_probabilities": module._elo_probabilities,
+        "estimate_residual_sigma": module._estimate_residual_sigma,
+        "fit_reference_calibration": module._fit_reference_calibration,
+        "margin_to_probability": module._margin_to_probability,
+        "mirror_margin_training_rows": module._mirror_margin_training_rows,
+        "prepare_reference_feature_frame": module._prepare_reference_feature_frame,
+        "build_margin_pipeline": module.build_margin_pipeline,
     }
 
 

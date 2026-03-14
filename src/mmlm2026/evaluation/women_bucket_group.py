@@ -90,4 +90,5 @@ def optimize_temperature(
 def logit(probabilities: pd.Series | list[float]) -> pd.Series:
     """Compute logits with clipping to keep the transform stable."""
     prob_series = pd.Series(probabilities, dtype=float).clip(1e-10, 1.0 - 1e-10)
-    return np.log(prob_series / (1.0 - prob_series))
+    logits = np.log(prob_series / (1.0 - prob_series))
+    return pd.Series(logits, index=prob_series.index, dtype=float)

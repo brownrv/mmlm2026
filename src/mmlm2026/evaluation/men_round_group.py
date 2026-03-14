@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import pandas as pd
 
@@ -42,15 +43,18 @@ def apply_round_group_blend(
     round_groups: pd.Series,
     *,
     state: RoundGroupCalibrationState,
-    apply_temperature: callable,
+    apply_temperature: Callable[[pd.Series, float], pd.Series],
 ) -> pd.Series:
     """Apply round-group-specific temperature and Elo blend weights."""
     result = pd.Series(index=p_raw.index, dtype=float)
-    for index, round_group in round_groups.items():
-        group_key = str(round_group) if pd.notna(round_group) else ""
+    group_series = round_groups.fillna("").astype(str)
+    for group_key in group_series.unique().tolist():
+        mask = group_series == group_key
+        if not mask.any():
+            continue
         temperature = state.temperature_by_group.get(group_key, state.fallback_temperature)
         alpha = state.alpha_by_group.get(group_key, state.fallback_alpha)
-        p_cal = float(apply_temperature(pd.Series([float(p_raw.loc[index])]), temperature).iloc[0])
-        blended = alpha * float(p_elo.loc[index]) + (1.0 - alpha) * p_cal
-        result.loc[index] = min(max(blended, 1e-10), 1.0 - 1e-10)
+        calibrated = apply_temperature(p_raw.loc[mask].astype(float), temperature).astype(float)
+        blended = alpha * p_elo.loc[mask].astype(float) + (1.0 - alpha) * calibrated
+        result.loc[mask] = blended.clip(lower=1e-10, upper=1.0 - 1e-10)
     return result

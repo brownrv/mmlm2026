@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -88,16 +89,18 @@ def summarize_espn_coverage(
     for (league, feature_group), feature_frame in feature_frames.groupby(
         ["league", "feature_group"], dropna=False
     ):
-        seasons = universe_counts.loc[universe_counts["league"] == league, "Season"].tolist()
+        league_str = str(league)
+        feature_group_str = str(feature_group)
+        seasons = universe_counts.loc[universe_counts["league"] == league_str, "Season"].tolist()
         covered = (
             feature_frame.groupby("Season", as_index=False)
             .agg(covered_teams=("TeamID", "nunique"))
-            .assign(league=league, feature_group=feature_group)
+            .assign(league=league_str, feature_group=feature_group_str)
         )
         base = pd.DataFrame(
             {
-                "league": league,
-                "feature_group": feature_group,
+                "league": league_str,
+                "feature_group": feature_group_str,
                 "Season": seasons,
             }
         )
@@ -134,7 +137,7 @@ def summarize_espn_null_profile(feature_frames: pd.DataFrame) -> pd.DataFrame:
                 {
                     "league": str(league),
                     "feature_group": str(feature_group),
-                    "Season": int(season),
+                    "Season": int(cast(int, season)),
                     "feature_name": feature_name,
                     "rows": int(len(season_frame)),
                     "non_null_rate": non_null_rate,

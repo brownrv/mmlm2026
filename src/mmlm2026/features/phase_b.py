@@ -548,7 +548,7 @@ def build_massey_pca_features(
         rows.append(
             pd.DataFrame(
                 {
-                    "Season": int(season),
+                    "Season": int(cast(int, season)),
                     "TeamID": pivoted.index.astype(int),
                     "massey_pca1": pc1_scores.astype(float),
                     "massey_disagreement": disagreement.to_numpy(dtype=float),

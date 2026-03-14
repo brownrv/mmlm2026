@@ -138,9 +138,12 @@ def prioritize_gap_cells(summary: pd.DataFrame) -> pd.DataFrame:
 def _round_group_from_round(value: object) -> str | None:
     if value is None or value is pd.NA:
         return None
+    value_str = str(value).strip()
+    if not value_str:
+        return None
     try:
-        round_int = int(value)
-    except (TypeError, ValueError):
+        round_int = int(value_str)
+    except ValueError:
         return None
     if round_int == 0:
         return "R0"
