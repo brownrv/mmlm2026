@@ -14,6 +14,7 @@ from sklearn.impute import SimpleImputer  # type: ignore[import-untyped]
 from sklearn.metrics import brier_score_loss, log_loss  # type: ignore[import-untyped]
 from sklearn.pipeline import Pipeline  # type: ignore[import-untyped]
 
+from mmlm2026.data.kaggle_refresh import load_detailed_results_with_refresh
 from mmlm2026.evaluation.bracket import compute_bracket_diagnostics, save_bracket_artifacts
 from mmlm2026.evaluation.validation import (
     ValidationSummary,
@@ -197,7 +198,11 @@ def main() -> int:
 
     data_dir = args.data_dir
     regular_season = pd.read_csv(data_dir / "MRegularSeasonCompactResults.csv")
-    regular_season_detailed = pd.read_csv(data_dir / "MRegularSeasonDetailedResults.csv")
+    regular_season_detailed = load_detailed_results_with_refresh(
+        data_dir,
+        base_filename="MRegularSeasonDetailedResults.csv",
+        revised_filename="MRegularSeasonDetailedResults_2021_2026.csv",
+    )
     results = pd.read_csv(data_dir / "MNCAATourneyCompactResults.csv")
     seeds = pd.read_csv(data_dir / "MNCAATourneySeeds.csv")
     slots = pd.read_csv(data_dir / "MNCAATourneySlots.csv")

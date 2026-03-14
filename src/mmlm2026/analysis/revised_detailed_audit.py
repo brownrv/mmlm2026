@@ -210,11 +210,11 @@ def build_refresh_dependency_matrix() -> pd.DataFrame:
             "item_id": "MH7-FEAT-01",
             "item_type": "feature_challenger",
             "league": "M+W",
-            "depends_on_revised_detailed": True,
-            "status": "Must re-test",
+            "depends_on_revised_detailed": False,
+            "status": "Probably safe",
             "reason": (
-                "GLM quality coefficients were fit from detailed regular-season "
-                "score structure."
+                "GLM quality coefficients are built from compact regular-season "
+                "results in the current implementation, not detailed box scores."
             ),
         },
         {

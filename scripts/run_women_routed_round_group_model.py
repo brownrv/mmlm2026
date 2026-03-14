@@ -7,6 +7,7 @@ import mlflow
 import pandas as pd
 from sklearn.metrics import brier_score_loss, log_loss  # type: ignore[import-untyped]
 
+from mmlm2026.data.kaggle_refresh import load_detailed_results_with_refresh
 from mmlm2026.evaluation.bracket import compute_bracket_diagnostics, save_bracket_artifacts
 from mmlm2026.evaluation.men_round_group import route_group_predictions
 from mmlm2026.evaluation.validation import (
@@ -265,7 +266,11 @@ def main() -> int:
         )
         feature_cols.extend(espn_component_cols)
     if args.include_late5_form or args.include_late_bundle:
-        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        regular_season_detailed = load_detailed_results_with_refresh(
+            args.data_dir,
+            base_filename="WRegularSeasonDetailedResults.csv",
+            revised_filename="WRegularSeasonDetailedResults_2021_2026.csv",
+        )
         late5 = build_late5_form_split_features(regular_season_detailed)
         feature_table = _attach_team_scalar_feature(
             feature_table,
@@ -282,7 +287,11 @@ def main() -> int:
         )
         feature_cols.extend(["late5_off_diff", "late5_def_diff"])
     if args.include_opp_boxscore:
-        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        regular_season_detailed = load_detailed_results_with_refresh(
+            args.data_dir,
+            base_filename="WRegularSeasonDetailedResults.csv",
+            revised_filename="WRegularSeasonDetailedResults_2021_2026.csv",
+        )
         opp_box = build_opponent_raw_boxscore_features(regular_season_detailed)
         for feature_name, diff_name in [
             ("avg_opp_score", "avg_opp_score_diff"),
@@ -498,7 +507,11 @@ def main() -> int:
         )
         infer_frame, _ = _attach_espn_component_features(infer_frame, espn_features)
     if args.include_late5_form or args.include_late_bundle:
-        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        regular_season_detailed = load_detailed_results_with_refresh(
+            args.data_dir,
+            base_filename="WRegularSeasonDetailedResults.csv",
+            revised_filename="WRegularSeasonDetailedResults_2021_2026.csv",
+        )
         late5 = build_late5_form_split_features(regular_season_detailed)
         infer_frame = _attach_team_scalar_feature(
             infer_frame,
@@ -514,7 +527,11 @@ def main() -> int:
             defensive=True,
         )
     if args.include_opp_boxscore:
-        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        regular_season_detailed = load_detailed_results_with_refresh(
+            args.data_dir,
+            base_filename="WRegularSeasonDetailedResults.csv",
+            revised_filename="WRegularSeasonDetailedResults_2021_2026.csv",
+        )
         opp_box = build_opponent_raw_boxscore_features(regular_season_detailed)
         for feature_name, diff_name in [
             ("avg_opp_score", "avg_opp_score_diff"),

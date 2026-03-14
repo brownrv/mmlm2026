@@ -3,6 +3,45 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — Revised detailed-data refresh gate: targeted reruns
+
+Status: Completed
+
+Hypothesis:
+- The revised Kaggle detailed-results files for `2021-2026` may materially change any challenger branch that depends on detailed box-score inputs, so the affected branches must be re-tested before final freeze.
+
+Dependencies:
+- data:revised_detailed_results_2021_2026_v1
+- tool:revised_detailed_audit_v1
+- model:men_reference_margin_generalization_v1
+- model:women_cooper_arch_01_04_v1
+
+MLflow:
+- Run name: `mh7-feat-01-men-glm-quality-refresh`
+- Run name: `mh7-feat-01-women-glm-quality-refresh`
+- Run name: `mh7-feat-02-men-opp-boxscore-refresh`
+- Run name: `mh7-feat-02-women-opp-boxscore-refresh`
+- Run name: `late-rate-01-men-ridge-strength-refresh`
+- Run name: `late-rate-01-men-espn-four-factor-refresh`
+- Run name: `late-feat-19-men-espn-rotation-refresh`
+
+Result:
+- `MH7-FEAT-01` remained a clear loser in both leagues under the refresh (`0.198366` men, `0.137629` women), but the code-path review also showed that it is compact-results-based in the current implementation and not actually detailed-data-dependent.
+- `MH7-FEAT-02` got worse under the revised detailed files (`0.197730` men, `0.138284` women), so the opponent-boxscore branch remains non-competitive.
+- The detailed-dependent men `LATE-RATE-01` slices degraded materially under the revised data: ridge-strength moved from `0.196103` to `0.198629`, ESPN-four-factor-over-ridge moved from `0.195652` to `0.198494`, and the follow-up rotation slice moved from `0.196864` to `0.199267`.
+- Conclusion: the revised detailed files do not create a hidden winner in the detailed-dependent challenger set; they further weaken those men branches and do not change the current frozen pair.
+
+Re-test if:
+- The official Selection Sunday data release differs materially from the supplemental revised detailed files.
+- A later challenger reuses the detailed-driven ridge-strength or opponent-boxscore branches with a meaningfully different model family.
+
+Related:
+- [revised_detailed_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/analysis/revised_detailed_audit.py)
+- [export_revised_detailed_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_revised_detailed_audit.py)
+- [run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
 ## 2026-03-14 — MH7-FEAT-02 v1: opponent raw box-score averages
 
 Status: Completed
