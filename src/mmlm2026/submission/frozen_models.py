@@ -107,6 +107,17 @@ def _load_women_routed_helpers() -> dict[str, Any]:
     }
 
 
+def _select_nonempty_feature_cols(
+    frame: pd.DataFrame,
+    feature_cols: list[str],
+) -> list[str]:
+    """Drop feature columns that are entirely missing in the available training window."""
+    active = [col for col in feature_cols if col in frame.columns and frame[col].notna().any()]
+    if not active:
+        raise ValueError("No active feature columns remain after dropping all-missing inputs.")
+    return active
+
+
 def build_seeded_submission_rows(seeds: pd.DataFrame, *, season: int) -> pd.DataFrame:
     """Build all seeded team-pair rows for a season in Kaggle submission orientation."""
     season_seeds = seeds.loc[seeds["Season"] == season, ["TeamID"]].copy()
@@ -389,11 +400,15 @@ def predict_frozen_women(
         feature_name="conf_pct_rank",
         diff_name="conf_pct_rank_diff",
     )
+    active_feature_cols = _select_nonempty_feature_cols(
+        training.loc[training["Season"] < season].copy(),
+        feature_cols,
+    )
     submission_frame = helpers["score_inference_frame"](
         training,
         submission_frame,
         season=season,
-        feature_cols=feature_cols,
+        feature_cols=active_feature_cols,
         use_decay_weighting=False,
         decay_base=0.9,
     )

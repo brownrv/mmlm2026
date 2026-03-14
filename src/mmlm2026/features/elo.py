@@ -191,9 +191,7 @@ def compute_pre_tourney_elo_ratings(
         required_conf = {"Season", "TeamID", "ConfAbbrev"}
         missing_conf = required_conf.difference(team_conferences.columns)
         if missing_conf:
-            raise ValueError(
-                f"Team conferences missing required columns: {sorted(missing_conf)}"
-            )
+            raise ValueError(f"Team conferences missing required columns: {sorted(missing_conf)}")
 
     regular = (
         regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff]

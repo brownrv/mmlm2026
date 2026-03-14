@@ -45,8 +45,10 @@ Always confirm dates on the Kaggle competition page before final submissions.
   1. Refresh raw files in `data/raw/march-machine-learning-mania-2026/`
   2. Update `data/manifests/` metadata
   3. Confirm the raw snapshot includes current-season regular-season files for the target submission season
-  4. Re-run the frozen submission builder and validation checks
-  5. Record operational outcome in `docs/experiments/experiment-log.md` if behavior changes materially
+  4. Confirm all external dependencies used by the frozen pair are refreshed as well, especially the women ESPN boxscore ingest needed for the frozen women four-factor feature
+  5. Re-run the frozen submission builder and validation checks
+  6. Record operational outcome in `docs/experiments/experiment-log.md` if behavior changes materially
+- When the official Selection Sunday release lands, prefer the revised `2021-2026` detailed files if they match the supplemental correction set already audited locally; if they differ materially, reopen the targeted refresh gate before freezing the final live candidate.
 
 ## Live Commands
 
@@ -66,7 +68,7 @@ uv run python scripts/validate_submission.py data/submissions/2025_gate3-dryrun-
 
 ### Selection Sunday / Stage 2 Live Run
 
-After Kaggle publishes the real 2026 Stage 2 sample and the raw snapshot contains 2026 regular-season inputs:
+After Kaggle publishes the real 2026 Stage 2 sample, the raw snapshot contains 2026 regular-season inputs, and the 2026 women ESPN ingest is available:
 
 ```powershell
 uv run python scripts/build_frozen_submission.py --sample-submission data/raw/march-machine-learning-mania-2026/SampleSubmissionStage2.csv --season 2026 --save-artifacts --tag final-candidate
@@ -98,17 +100,21 @@ The frozen submission builder writes:
 Historical dry-run outputs already verified:
 - `data/submissions/2025_gate3-dryrun-2025_submission.csv`
 - `data/submissions/2025_gate3-dryrun-2025_artifacts/`
+- `data/submissions/2025_gate3-dryrun-2025-refresh_submission.csv`
+- `data/submissions/2025_gate3-dryrun-2025-refresh_artifacts/`
 
 ## Current Live Blocker
 
 - The current raw snapshot does not yet include 2026 regular-season inputs.
-- Because of that, the real 2026 Stage 2 sample cannot be scored end to end yet.
+- The frozen women model also requires the 2026 ESPN ingest for women four-factor features.
+- Because of those data dependencies, the real 2026 Stage 2 sample cannot be scored end to end yet.
 - No code or model-selection work remains blocked by this; only the final live data refresh is pending.
 
 ## Upload Checklist
 
 - [ ] `SampleSubmissionStage2.csv` is present locally and for season `2026`
 - [ ] 2026 regular-season inputs are present in `data/raw/march-machine-learning-mania-2026/`
+- [ ] 2026 women ESPN boxscore ingest is present under `data/processed/espn/womens-college-basketball/2026/`
 - [ ] Frozen builder command completed successfully
 - [ ] `scripts/validate_submission.py` passed on the final candidate
 - [ ] Final candidate file exists in `data/submissions/`

@@ -55,9 +55,7 @@ def main() -> int:
     inventory.to_csv(args.manifest_path, index=False)
 
     men_regular_original = pd.read_csv(args.data_dir / "MRegularSeasonDetailedResults.csv")
-    men_regular_revised = pd.read_csv(
-        args.data_dir / "MRegularSeasonDetailedResults_2021_2026.csv"
-    )
+    men_regular_revised = pd.read_csv(args.data_dir / "MRegularSeasonDetailedResults_2021_2026.csv")
     women_regular_original = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
     women_regular_revised = pd.read_csv(
         args.data_dir / "WRegularSeasonDetailedResults_2021_2026.csv"

@@ -306,9 +306,11 @@ def compare_kaggle_vs_espn_discrepancies(
                 "significant_discrepancy_rate",
             ]
         )
-    return pd.concat(frames, ignore_index=True).sort_values(
-        ["league", "stat", "dataset_version"]
-    ).reset_index(drop=True)
+    return (
+        pd.concat(frames, ignore_index=True)
+        .sort_values(["league", "stat", "dataset_version"])
+        .reset_index(drop=True)
+    )
 
 
 def _load_matched_espn_comparison_rows(
@@ -323,9 +325,11 @@ def _load_matched_espn_comparison_rows(
     league_root = "mens-college-basketball" if league == "M" else "womens-college-basketball"
     mapping = _build_unique_espn_mapping(team_spellings, team_id_col=team_id_col)
     combined = pd.concat([regular_frame, tourney_frame], ignore_index=True).copy()
-    key_counts = combined.groupby(
-        ["Season", "WTeamID", "LTeamID", "WScore", "LScore"]
-    ).size().rename("key_count")
+    key_counts = (
+        combined.groupby(["Season", "WTeamID", "LTeamID", "WScore", "LScore"])
+        .size()
+        .rename("key_count")
+    )
     combined = combined.merge(
         key_counts.reset_index(),
         on=["Season", "WTeamID", "LTeamID", "WScore", "LScore"],

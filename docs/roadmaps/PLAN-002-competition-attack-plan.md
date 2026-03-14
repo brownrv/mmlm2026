@@ -195,6 +195,12 @@ These are supplemental pre-release files that correct known detailed-stat issues
 
 **Decision rule for the refresh:** do not reopen the full leaderboard by default. Re-test all detailed-data-dependent models and all near-ties, then keep unaffected branches frozen unless the revised data materially changes a dependent winner.
 
+**Refresh-gate closure note (2026-03-14):**
+- The first targeted reruns are complete and no detailed-data-dependent challenger improved.
+- `MH7-FEAT-01` was reclassified as compact-results-based in code and therefore `Probably safe`.
+- `LATE-RATE-02` was reviewed and does not require a revised-detailed-data rerun because its implemented women path depends on compact results, Elo, and ESPN four-factor features rather than Kaggle detailed box-score inputs.
+- Challenger refresh reruns are therefore closed unless the official Selection Sunday release differs materially from the current supplemental revised files.
+
 ### 1.4 Feature Pre-Registration
 
 Features must be registered before fitting. For each feature, record:

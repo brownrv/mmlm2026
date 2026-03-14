@@ -3,6 +3,40 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — Refreshed frozen historical diagnostics and operations readiness
+
+Status: Completed
+
+Hypothesis:
+- After aligning the frozen submission path and closing the challenger refresh gate, the frozen historical diagnostics should refresh cleanly and the remaining operational blockers should be limited to live 2026 data availability.
+
+Dependencies:
+- model:men_reference_margin_generalization_v1
+- model:women_cooper_arch_01_04_v1
+- data:revised_detailed_results_2021_2026_v1
+- tool:frozen_historical_export_v1
+
+Result:
+- Refreshed the frozen historical exports with the current frozen pair by rerunning `scripts/export_frozen_historical_performance.py`.
+- Export completed successfully and rewrote the standard outputs:
+  - `data/interim/frozen_historical_all_matchups.parquet` / `.csv`
+  - `data/interim/frozen_historical_performance.parquet` / `.csv`
+- Export counts remained:
+  - all matchups: `73644`
+  - played games: `2141`
+- The refresh gate for challenger reruns is now closed: `LATE-RATE-02` was reviewed and confirmed not to depend on Kaggle detailed box-score inputs in its implemented women path.
+- Operationally, the remaining live blockers are now the 2026 Kaggle regular-season refresh and the 2026 ESPN ingest required by the frozen women model.
+
+Re-test if:
+- The official Selection Sunday release differs materially from the current supplemental revised detailed files.
+- 2026 ESPN boxscore ingest is incomplete or materially delayed.
+
+Related:
+- [export_frozen_historical_performance.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_frozen_historical_performance.py)
+- [COMPETITION_OPERATIONS.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/COMPETITION_OPERATIONS.md)
+- [PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+
+---
 ## 2026-03-14 — Refreshed-data frozen pair end-to-end dry run
 
 Status: Completed
