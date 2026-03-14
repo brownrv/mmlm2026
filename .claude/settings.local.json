@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p \"c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/archive\")",
-      "Bash(mv \"c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/SETUP_PLAN.md\" \"c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/archive/SETUP_PLAN.md\")"
+      "Bash(mv \"c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/SETUP_PLAN.md\" \"c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/archive/SETUP_PLAN.md\")",
+      "Bash(python3:*)",
+      "Bash(python -c \":*)"
     ]
   }
 }

@@ -64,6 +64,25 @@ The overconfident model scores **0.250** on this game — identical to predictin
 | Underconfident (pushed toward 0.5) | Worse than calibrated, but less catastrophically than overconfidence |
 | Clipping at [0.025, 0.975] | Required; prevents infinite penalty at 0/1 for wrong predictions |
 
+**Underdog threshold — when aggressive picks have positive expected value.**
+
+Brier score is strictly proper, so the optimal prediction is always the true probability. However, when evaluating whether a calibrated model output for a moderate underdog is worth preserving (rather than pulling toward 0.5), the following closed-form result applies:
+
+The expected Brier score gain from predicting an underdog at their true probability p, relative to the naive 0.5 baseline, is maximised at **p = 1/3 ≈ 33.3%**:
+
+```
+Maximize  f(p) = p·(1 − p)²   over p ∈ [0, 1]
+f′(p) = (1 − p)² − 2p(1 − p) = (1 − p)(1 − 3p) = 0
+→  p* = 1/3
+```
+
+**Practical interpretation:**
+- If the model outputs a calibrated probability of 0.35–0.48 for an underdog, the math confirms that keeping that output (or making it slightly more aggressive) has positive expected Brier value relative to pulling it toward 0.5.
+- If the model outputs < 0.33 for an underdog, aggressive deviation toward that team is expected to *lose* in expectation; trust the calibrated output.
+- This is not a license to pick random upsets — it defines the probability zone (> 1/3 true win chance) where the model's calibrated output should be respected rather than smoothed away.
+- The symmetric corollary: for strong favorites (true probability > 2/3), resisting the urge to pull predictions back toward 0.5 is equally mathematically grounded.
+- This is not a license to deviate from the model's calibrated output — it is a principled defense of that output against post-hoc smoothing toward 0.5, which itself is a deviation from strict propriety.
+
 **Target benchmark:**
 - Naive 0.5 baseline: ~0.250
 - Seed-difference logistic: ~0.220 (historical reference)
@@ -104,6 +123,7 @@ See `docs/data/FILE_CATALOG.md` for full catalog. Summary of high-value tables:
 | Conference tourneys | `MConferenceTourneyGames.csv` | `WConferenceTourneyGames.csv` | Late-season form |
 | Game cities | `MGameCities.csv` | `WGameCities.csv` | Neutral-site / home-court proxy |
 | Secondary tourney | `MSecondaryTourneyCompactResults.csv` | `WSecondaryTourneyCompactResults.csv` | NIT, etc. |
+| Conference membership | `MTeamConferences.csv` | `WTeamConferences.csv` | Season-by-season team–conference mapping; required for COOPER-ARCH-03 (conference mean Elo reversion) |
 
 **Data constraints:**
 
@@ -121,11 +141,13 @@ The repository now contains several non-Kaggle datasets that are explicitly in s
 | Reference all-matchups benchmark table | `data/reference/` | Men 2003–2025, Women 2010–2025 | Compare local models against `adj_quality_gap_v10`, inspect bucket/round-specific misses, and build challenger-targeted diagnostics | Contains model-derived features and probabilities from the benchmark model; use for comparison, error analysis, and feature inspiration, not as a leakage-prone direct training target |
 | BetExplorer odds | `data/processed/betexplorer/` | Men and women, regular season and tournament, opening/closing odds | Market-implied priors, calibration anchors, and late-round matchup strength features | Coverage gaps, team-name mapping quality, and market data availability may differ by league and season |
 | ESPN parsed game and player data | `data/processed/espn/` | Men and women historical seasons in parquet | Richer box-score and player-level strength signals, lineup-agnostic form, possession decomposition, and situational features | Join complexity, schema drift, and the risk of over-building low-signal features under deadline |
+| External tournament-progression forecasts | `data/processed/tourney_forecasts/` (populate post-Selection Sunday if secured) | Men and women, target season only; **preferred source: COOPER (Silver Bulletin)** — injury-adjusted, bracket-simulates 'hot' (ratings update during simulation), internal ratings blended 5/8 COOPER + 3/8 KenPom (M) / Her Hoop Stats (W); fallback sources: ESPN bracket forecasts, T-Rank, teamrankings.com; columns `rd1_win`–`rd6_win` per team; 538 no longer publishes as of 2024 | `LATE-EXT-04` challenger: blend as direct H2H prior (via `goto_conversion`), derive conditional-strength features (`rd_r_win / rd_{r-1}_win`), or use as calibration anchor | Data availability not guaranteed for 2026; use only forecasts from the earliest available pre-tournament date (before Selection Sunday; no updating with realized results); team-name mapping to Kaggle TeamID required; women's COOPER launched March 10 — verify full M+W team coverage before Selection Sunday |
 
 **Planning stance for these datasets:**
 - `data/reference/` is primarily an analysis and benchmark-comparison asset. It is best used to identify where local models differ from the benchmark on the same matchup universe and to prioritize challenger hypotheses.
 - `data/processed/betexplorer/` is the highest-upside late challenger dataset if coverage is clean, because market odds can act as a strong compressed prior for strength and calibration.
 - `data/processed/espn/` is the best source for improving internal strength ratings and situational features, especially if the objective is a better latent team-quality model rather than a broader final classifier.
+- `data/processed/tourney_forecasts/` is **conditional on data availability confirmed post-Selection Sunday (March 15)**. If a clean source with full M+W team coverage is secured, this is the highest-leverage remaining external signal because it is bracket-aware and orthogonal to all internal Elo/GBT features. **Preferred source: COOPER (Silver Bulletin)** — injury-adjusted bracket simulations that run 'hot' (team ratings update during simulation based on simulated game results, giving a more realistic posterior for later rounds); blends COOPER 5/8 + KenPom/Her Hoop Stats 3/8. If COOPER is not accessible, fall back to ESPN, T-Rank, or teamrankings.com. If data cannot be secured by 2026-03-16, skip LATE-EXT-04 entirely and proceed with the frozen leaders.
 
 ### 1.4 Feature Pre-Registration
 
@@ -158,6 +180,8 @@ Features must be registered before fitting. For each feature, record:
 | ESPN-derived four-factor / possession composites | + stronger efficiency profile wins | Medium | Late-challenger only; must be season-stable and aggregated without future leakage |
 | Player/rotation continuity proxies | Interaction | Medium | Late-challenger only; useful only if historical coverage and joins are stable |
 | GLM team quality coefficients (Bradley-Terry OLS) | + higher quality coefficient wins | None | `glm_quality_diff = α_LowTeamID - α_HighTeamID`; OLS fit on regular-season point diffs, independently per season; see MH7-FEAT-01 in §9.2 for full design matrix spec; requires detailed results |
+| Conditional round-progression strength (external forecast) | + higher conditional strength wins | Medium | `cond_r{n}_strength = rd{n}_win / rd{n-1}_win` per team; diff = LowTeam − HighTeam; derived from external tournament-progression forecasts; LATE-EXT-04 only; see GC-FEAT-01 in §9.2; use only forecasts from the earliest available pre-tournament date (before Selection Sunday); requires data availability confirmed post-Selection Sunday |
+| Pace (expected combined points per game) | Interaction; modulates confidence in margin-based predictions | None | `low_pace` = OT-normalized rolling average of total game score per game involving LowTeamID (LowTeamID score + opponent score); `high_pace` equivalent; `pace_diff = low_pace − high_pace`; higher-scoring games have higher score variance so a marginal point carries less signal; GBT may learn non-linear interactions between pace and margin/efficiency features; see COOPER-FEAT-01 in §9.2 |
 | Opponent raw box-score averages | − higher opponent-score-allowed loses; varies by stat | None | `low_avg_opp_{stat}` / `high_avg_opp_{stat}` / `avg_opp_{stat}_diff` for stat ∈ {Score, FGA, Blk, PF, TO, Stl}; each is the mean stat recorded by opponents *against* that team per regular-season game (OT-normalized); simpler defensive quality proxy complementary to adjusted efficiency; see MH7-FEAT-02 in §9.2 |
 
 ---
@@ -196,6 +220,7 @@ Submission target: 2026 tournament
 | Normalization using global statistics | Standardizing features with mean/std computed over all seasons | Fit scaler on training folds only; apply frozen scaler to validation/test |
 | Imputed values derived from full dataset | Filling missing women's Massey rank with full-dataset median | Impute using training-fold statistics only |
 | Massey ordinals from after selection | Using a ranking with `RankingDayNum ≥ 134` as a pre-tournament strength feature | Filter Massey to `RankingDayNum ≤ 133`; use the final pre-cutoff ranking for each system |
+| External bracket-forecast inputs (tournament-progression probabilities) | Using a bracket forecast published or updated after tournament start (Selection Sunday) | Use only forecasts from the earliest available pre-tournament date (before Selection Sunday); do not update forecast probabilities with realized bracket outcomes |
 
 **Enforcement:** Before any experiment advances to Gate 1, run the leakage audit checklist in §5.2. Log the audit result as an MLflow tag: `leakage_audit: passed`.
 
@@ -274,6 +299,7 @@ Phase B — Enhanced Strength
   B4. Massey ordinal consensus (men only; median rank across systems)
   B5. SOS-adjusted net efficiency (season-normalized net_eff + sos)
   B6. GLM team quality coefficients (OLS on regular-season point diffs; team-pair indicator design matrix; fit per season; see MH7-FEAT-01)
+  B7. Pace factor (OT-normalized rolling avg of total points per game per team; see COOPER-FEAT-01)
 
 Phase C — Matchup Features
   C1. Elo difference (per matchup pair)
@@ -326,6 +352,10 @@ glm_quality_diff: float (nullable; optional late-challenger column)
 # MH7-FEAT-02 adds 18 optional late-challenger columns following the same Low/High/diff pattern:
 # low_avg_opp_{stat}, high_avg_opp_{stat}, avg_opp_{stat}_diff for stat in {Score, FGA, Blk, PF, TO, Stl}
 # These columns are null below each league's training floor (men pre-2010, women pre-2010).
+# COOPER-FEAT-01 adds 3 optional late-challenger columns:
+# low_pace, high_pace, pace_diff
+# low_pace = OT-normalized avg of (team score + opponent score) per regular-season game for LowTeamID
+# Available wherever compact results exist; no detailed-results dependency.
 # Optional late-challenger columns are omitted from the base feature table until the
 # corresponding challenger is promoted via §4.5 gate criteria.
 round_prior: float
@@ -455,6 +485,7 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 | 6 | LATE-EXT-01 | Men external benchmark-guided challenger | M | Medium-High | Medium | `data/reference/` | Use benchmark all-pairs outputs and features to identify where the local men model still lags and target those cells |
 | 7 | LATE-EXT-02 | Women external benchmark-guided challenger | W | Medium | Medium | `data/reference/` | Use benchmark comparison to isolate round/bucket cells where women still trail the reference |
 | 8 | LATE-EXT-03 | ESPN-derived advanced situational features | M+W | Medium-High | High | `data/processed/espn/` | Richer possessions, four factors, player/game context, and situational form can improve latent rating quality |
+| 9 | LATE-EXT-04 | External tournament-progression forecast challenger | M+W | Very High (if data secured) | Medium | `data/processed/tourney_forecasts/` | Bracket-aware pre-tournament round-progression probabilities (ESPN, T-Rank, KenPom, or equivalent) are orthogonal to all internal Elo/GBT signals; three sub-approaches: (A) direct H2H blend via `goto_conversion`, (B) conditional-strength features (`rd_r_win / rd_{r-1}_win`), (C) calibration anchor; **conditional on data availability confirmed post-Selection Sunday — skip entirely if not secured by 2026-03-16** |
 
 #### Tier 3 — Representation-learning challengers
 
@@ -464,9 +495,9 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 | 10 | LATE-EMB-02 | Women team embeddings from regular-season game graph | W | Medium | High | Same concept, but women likely benefit more first from better upstream data/rating construction |
 | 11 | LATE-NN-01 | End-to-end shallow neural tournament model | M+W | Low-Medium | High | Least attractive before deadline; calibration and overfitting risk are high for the likely marginal upside |
 
-#### Tier 4 — Notebook-derived feature and training scheme challengers
+#### Tier 4 — Notebook- and methodology-derived feature and training scheme challengers
 
-All challengers in this tier use Kaggle competition data only (no external datasets required). Sourced from `notebooks/0-1471-stage-2-metastack-madness-engine-eda.ipynb`. Leakage policy is identical to all other challengers: features computed using only data available before DayNum 134 of the target season, from seasons strictly before the target year.
+All challengers in this tier use Kaggle competition data only (no external datasets required). Sources: `notebooks/0-1471-stage-2-metastack-madness-engine-eda.ipynb` and `docs/cooper_ratings.docx` (COOPER methodology, Silver Bulletin). Leakage policy is identical to all other challengers: features computed using only data available before DayNum 134 of the target season, from seasons strictly before the target year.
 
 | Rank | ID | Challenger | League | Expected Payoff | Effort | Why it is next |
 |---|---|---|---|---|---|---|
@@ -484,6 +515,11 @@ All challengers in this tier use Kaggle competition data only (no external datas
 | 23 | LATE-FEAT-29 | Conference percentile rank | M+W | Low-Medium | Medium | Team's percentile rank within its own conference by net rating; distinguishes a dominant mid-major from a fringe power-conference team better than raw conference average strength (FEAT-10) |
 | 24 | LATE-FEAT-31 | Tournament program pedigree | M+W | Low-Medium | Low-Medium | 5-year lookback: NCAA tournament appearances count, average seed, best seed; team-level organizational experience beyond coach features (FEAT-07); requires only historical `{M\|W}NCAATourneySeeds.csv` |
 | 25 | LATE-ARCH-CB-01 | CatBoost base learner | M+W | Low-Medium | Medium | Additional base learner diversity beyond LightGBM/XGBoost; ordered boosting and built-in categorical handling; reference notebook shows CatBoost as highest meta-weight member (0.359 for men); only warranted if diversity audit shows high OOF correlation among current ensemble members |
+| 26 | COOPER-ARCH-01 | Win-bonus Elo (winner +6 margin credit) | M+W | High | Low | Trivial change to Elo update: add +6 to the winner's score before updating ratings; COOPER reports ~1% gain in win-prediction accuracy vs margin-only Elo; tests whether outcome credit on top of raw margin improves tournament feature quality; implement as an Elo variant alongside the current baseline |
+| 27 | COOPER-ARCH-04 | Variable k-factor with early-season decay | M+W | Medium | Low | Use 2× base k-factor for a team's first ~15 games of each season, decaying to base thereafter; early games carry disproportionate information against a crude preseason prior; can be combined in the same run as COOPER-ARCH-01 |
+| 28 | COOPER-ARCH-03 | Conference mean Elo reversion at season end | M+W | Medium | Low | Revert each team's Elo toward its conference mean (not global mean) between seasons; provides a better-grounded prior for teams in stronger conferences; requires `MTeamConferences.csv` / `WTeamConferences.csv` (confirmed present in `data/raw/march-machine-learning-mania-2026/`) |
+| 29 | COOPER-FEAT-01 | Pace feature as standalone GBT input | M+W | Medium | Low | `low_pace` / `high_pace` = OT-normalized avg total game score per regular-season game per team; `pace_diff = low_pace − high_pace`; higher-scoring environments have higher score variance; GBT may learn non-linear interactions between pace and margin/efficiency features; requires compact results only |
+| 30 | COOPER-ARCH-02 | Impact-factor weighted Elo / GLM fitting | M+W | Medium | Medium | Down-weight lopsided expected matchups in Elo and GLM (OLS) fitting, inversely proportional to projected score gap; conference games and tournament games receive additional weight; addresses garbage-time compression bias in blowout games; attempt only if COOPER-ARCH-01/-04 show signal |
 
 #### Dataset-to-challenger mapping
 
@@ -492,6 +528,7 @@ All challengers in this tier use Kaggle competition data only (no external datas
 | `data/reference/` | `LATE-EXT-01`, `LATE-EXT-02`, routed-model diagnostics, benchmark-cell analysis | Compare local frozen predictions vs benchmark probabilities on the same all-pairs universe, then prioritize the largest recurring men/women round-bucket gaps. Promotion decisions still depend only on played-game held-out flat Brier. |
 | `data/processed/betexplorer/` | `LATE-MKT-01`, later-stage calibration challengers, odds-implied strength priors | Convert opening/closing odds to implied win probabilities and test them first as a simple prior/blend ingredient before building broader market-feature bundles |
 | `data/processed/espn/` | `LATE-RATE-01`, `LATE-RATE-02`, `LATE-EXT-03`, embedding challengers | Build better team-level possessions, four factors, and player-agnostic form summaries rather than immediately training a large model directly on event-level data |
+| `data/processed/tourney_forecasts/` | `LATE-EXT-04` (sub-approach A first, then B and C) | Confirm data coverage for all tournament teams M+W; map team names to Kaggle TeamIDs via `data/TeamSpellings.csv`; use only forecasts from the earliest available pre-tournament date (before Selection Sunday); attempt direct `goto_conversion` H2H blend before building conditional-strength feature pipeline |
 
 #### Recommended execution order while time remains
 
@@ -500,6 +537,7 @@ All challengers in this tier use Kaggle competition data only (no external datas
 3. `LATE-RATE-01` — improved men latent strength model
 4. `LATE-RATE-02` — improved women latent strength model
 5. `LATE-MKT-01` — BetExplorer odds prior / calibration challenger if joins are clean
+   - `LATE-EXT-04` — tournament-progression forecast challenger **if and only if** a clean 2026 data source is confirmed post-Selection Sunday; attempt sub-approach A (direct blend via `goto_conversion`) first before building conditional-strength features
 6. `LATE-EXT-01` / `LATE-EXT-02` — benchmark-guided men/women gap analysis and targeted challenger design
 7. `LATE-EXT-03` — ESPN-derived advanced strength/situational features
 8. `LATE-EMB-01` / `LATE-EMB-02` only if the earlier, simpler challenger classes stall
@@ -511,6 +549,10 @@ All challengers in this tier use Kaggle competition data only (no external datas
 14. `LATE-FEAT-30` — Massey PCA and disagreement features (men only)
 15. `LATE-FEAT-24` + `LATE-FEAT-27` + `LATE-FEAT-29` + `LATE-FEAT-31` — late-5 form, neutral-site profiles, conference percentile, program pedigree (if time allows)
 16. `LATE-ARCH-CB-01` — CatBoost base learner (only if diversity audit shows high OOF correlation among current ensemble members)
+17. `COOPER-ARCH-01` + `COOPER-ARCH-04` — win-bonus Elo and variable k-factor (trivial, implement as a single Elo variant run; test `elo_diff` from this variant as a drop-in replacement in existing models)
+18. `COOPER-ARCH-03` — conference mean Elo reversion (low effort; implement as an Elo initialization change; `MTeamConferences.csv` / `WTeamConferences.csv` confirmed in `data/raw/`)
+19. `COOPER-FEAT-01` — pace feature as standalone GBT input (requires only compact results; derived from existing data)
+20. `COOPER-ARCH-02` — impact-factor weighted Elo / GLM fitting (medium effort; attempt only if items 17–19 show signal)
 
 **Execution note:** `LATE-EXT-01` and `LATE-EXT-02` are benchmark-guided challenger-design tasks, not standalone promotion criteria. They exist to identify high-leverage cells and define the next testable challenger; they do not replace played-game held-out flat-Brier model selection.
 
@@ -586,11 +628,48 @@ The inner clip (`[-t, t]`) prevents wild extrapolation beyond the training range
 **Calibration method selection rule:**
 - Classification output (probability) → isotonic regression or Platt scaling
 - Regression output (margin / score) → UnivariateSpline(k=5) with margin clipping
+- Tournament-progression probability input (LATE-EXT-04 only) → `goto_conversion` (see below)
+
+**Score distribution tails.** Empirically, college basketball game scores follow a slightly fat-tailed distribution — outlier outcomes (travel disruption, unusual matchup dynamics, injury during game) occur more often than a normal distribution predicts. The `UnivariateSpline` calibration handles this non-parametrically without assuming a distribution family, which is the correct approach for regression-target models. For classification-output models calibrated with isotonic regression, this is handled automatically via the empirical reliability diagram. However, if reliability diagrams show *systematic* miscalibration in the extreme bins (> 0.80 or < 0.20) after isotonic regression — not just noise — this is a signal that the base model is being fit under a normality assumption that does not hold, and a logistic or Student-t score distribution should be investigated as an alternative base.
+
+**Favourite-longshot bias diagnostic.**
+
+A named calibration failure mode distinct from the general overconfidence trap (§1.1): naive probability normalization systematically *underestimates strong favorites and overestimates moderate underdogs* across all games. This happens because:
+
+1. Regular-season ratings accumulate "garbage time" where starters rest and opponents score freely, compressing ratings toward parity.
+2. Tournament play has equal motivation throughout; the best teams' true advantage is larger than regular-season ratings suggest.
+3. The result: a model trained on regular-season-derived features will systematically assign too much probability mass to the 0.40–0.60 range and too little to the tails (favorites > 0.75, underdogs < 0.25).
+
+This is different from overconfidence: the concern is calibration being *too conservative on favorites*, not too aggressive. A well-functioning isotonic regression trained on sufficient historical tournament games should correct this automatically, but it must be verified explicitly.
+
+**Favourite-longshot bias check (add to VAL-02 calibration audit):**
+- After fitting calibration, plot the reliability diagram with at least 10 bins
+- Check specifically whether bins above 0.70 (favorites) show systematic *under*-prediction (empirical win rate > predicted probability)
+- If the calibration curve bends *below* the diagonal for favorites, the calibration is not fully correcting for this bias; consider a more flexible calibration or verify that the training window includes sufficient high-confidence games
+
+**goto_conversion for tournament-progression probability inputs (LATE-EXT-04 only).**
+
+When the input to H2H probability conversion is a pair of tournament round-reaching probabilities (from an external bracket forecast), use the `goto_conversion` algorithm instead of simple multiplicative normalization:
+
+```python
+# Simple multiplicative (naive — underestimates favorites):
+p_low = rd_r_win_low / (rd_r_win_low + rd_r_win_high)
+
+# goto_conversion (corrects favourite-longshot bias):
+from goto_conversion import goto_conversion
+odds = [1 / rd_r_win_low, 1 / rd_r_win_high]
+p_low, p_high = goto_conversion(odds, multiplicativeIfImprudentOdds=True)
+```
+
+**Dependency note:** `goto_conversion` (PyPI: `goto-conversion`, v3.0.3) is not a default project dependency. Add it to `pyproject.toml` only if LATE-EXT-04 sub-approach A is promoted post-Selection Sunday.
+
+This applies only when the base signal is tournament-progression probabilities (LATE-EXT-04). For all other calibration inputs (model probabilities or score margins), use the methods above.
 
 **Calibration validation:**
 - Reliability diagram for each league (M and W separately)
 - Expected Calibration Error (ECE) < 0.02 target
 - Calibrated output must be re-clipped to [0.025, 0.975] after calibration
+- Favourite-longshot bias check: verify bins > 0.70 are not systematically under-predicted (see above)
 
 ### 6.2 Ensemble Construction
 
@@ -893,6 +972,11 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-ARCH-META-01 | Logit-Ridge meta-learner (M+W) | Ridge regression in logit space on OOF base learner probabilities | OOF logits from current best ensemble members | M+W | Ridge in log-odds space emphasizes tail calibration where Brier loss is steepest; alpha tuned via leave-seasons-out CV; alternative to no-intercept logistic in COMBO-03/04 Tier 2 | P2 |
 | LATE-ARCH-CB-01 | CatBoost base learner (M+W) | CatBoost | Current best feature family per league | M+W | Ordered boosting and categorical handling adds diverse base learner predictions; reference notebook shows CatBoost as highest meta-weight ensemble member (0.359 for men); warranted only if diversity audit shows high OOF correlation among current members | P3 |
 | LATE-ARCH-MW-01 | Unified M+W model with gender flag | XGBoost/LightGBM | All Phase A+B features + `men_women` binary flag (1=M, 0=W); nullable men-only features (Massey, coach) set to 0 or league-median for women rows | M+W | Pooling men's and women's tournament data roughly doubles the training sample; XGBoost learns gender-specific patterns via the `men_women` flag. **Promotion requires all three**: (1) combined M+W flat Brier beats COMBO-05 on 2023–2024 CV; (2) men's Brier ≤ men frozen leader (0.195566); (3) women's Brier ≤ women frozen leader (0.130381). This is a challenger to committed ADR 0004 — promotion also requires an explicit update to `docs/decisions/0004-men-women-tournament-modeling-strategy.md`. | P3 |
+| LATE-EXT-04 | Tournament-progression forecast challenger (M+W) | Three sub-approaches — (A) direct H2H blend via `goto_conversion`; (B) conditional-strength features as GBT inputs; (C) calibration anchor / shrinkage prior | External bracket-simulation probabilities (`rd1_win`–`rd6_win` per team; **preferred source: COOPER, Silver Bulletin** — injury-adjusted, bracket-simulates 'hot', blended 5/8 COOPER + 3/8 KenPom (M) / Her Hoop Stats (W); verify M+W coverage before Selection Sunday; fallback: ESPN, T-Rank, teamrankings.com; 538 no longer publishes); team-name join via `data/TeamSpellings.csv` | M+W | Bracket-aware pre-tournament progression probabilities are orthogonal to all internal Elo/GBT signals and encode seed draw, opponent difficulty, and simulation-derived team strength in a single compact vector; COOPER's 'hot' simulation (ratings update during bracket simulation so later-round probabilities reflect simulated early outcomes) makes it a higher-quality source than static pre-tournament rating systems; `goto_conversion` corrects favourite-longshot bias in the conversion to H2H probabilities. **Conditional on data availability confirmed post-Selection Sunday — skip entirely if clean M+W coverage not secured by 2026-03-16.** Attempt sub-approach A first; promote if flat Brier beats frozen leader on 2023–2024 CV. | P1 (if data secured) |
+| COOPER-ARCH-01 | Win-bonus Elo variant (M+W) | Elo (modified update rule) | All Phase A+B features using `elo_diff` from win-bonus Elo | M+W | The standard Elo update uses raw scoring margin; adding +6 points to the winner's score before updating (empirically optimal in COOPER, derived from minimizing prediction error) corrects for the asymmetric information value of winning vs losing regardless of margin; COOPER reports ~1% improvement in win-prediction accuracy; test as a drop-in replacement for `elo_diff` in existing models without any other feature change | P2 |
+| COOPER-ARCH-04 | Variable k-factor Elo variant (M+W) | Elo (modified k-factor schedule) | `elo_diff` from variable k-factor Elo; can be combined with COOPER-ARCH-01 in a single run | M+W | Use 2× base k-factor for each team's first ~15 games of the season, linearly decaying to the base k thereafter; early-season games reveal disproportionately more information relative to a crude preseason prior, but a too-high k mid-season causes zig-zagging; COOPER uses k=55 base (vs SBCB's k=38), suggesting our current k may be too conservative | P2 |
+| COOPER-ARCH-03 | Conference mean Elo reversion (M+W) | Elo (modified season reversion) | `elo_diff` with conference-mean Elo reversion | M+W | Instead of reverting each team's Elo toward the global mean at season end, revert toward the mean of its conference; teams in stronger conferences have a better-grounded starting prior than the global average provides; conference membership from `MTeamConferences.csv` / `WTeamConferences.csv`; test as additional Elo variant alongside COOPER-ARCH-01/-04 | P3 |
+| COOPER-ARCH-02 | Impact-factor weighted Elo / GLM fitting (M+W) | Weighted Elo; weighted OLS (GLM) | `elo_diff` from impact-weighted Elo; `glm_quality_diff` from impact-weighted OLS | M+W | Weight each game's Elo and GLM update inversely proportional to its projected score gap (lopsided blowouts contribute less signal due to garbage-time compression); conference games and tournament games receive an additional weight multiplier; addresses the same favourite-longshot bias noted in §6.1 at the feature-construction layer rather than the calibration layer; attempt only if COOPER-ARCH-01/-04 show Brier improvement on CV | P3 |
 
 ### 9.2 Feature Experiments
 
@@ -931,6 +1015,8 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-FEAT-31 | Tournament program pedigree (M+W) | pedigree_score_diff: 5-year tournament win rate weighted by round reached | Frozen leader challenger | Program pedigree captures institutional tournament experience beyond coaching tenure; 5-year window balances recency and sample size; computed from historical tournament results (no leakage by construction) | P3 |
 | MH7-FEAT-01 | GLM team quality (Bradley-Terry OLS) (M+W) | `glm_quality_diff = α_LowTeamID - α_HighTeamID` (positive when LowTeam is stronger); OLS fit per season independently on that season's regular-season games only (no cross-season pooling; complies with §2.2 leakage policy); design matrix: one row per game, one column per team, +1 for the winning team, −1 for the losing team, no intercept; target: `WScore - LScore` (winner's margin); estimated via `statsmodels.OLS(y, X).fit()` where `X` is the sparse indicator matrix and `y` is the point differential vector; coefficients α_i are in points | Frozen leader challenger | Simultaneous estimation of all team strengths in one season-wide OLS pass captures the full game covariance structure, orthogonal to both sequential Elo and iterative SOS; modeh7 first-place solution shows AUC ~0.84 standalone, additive over seeds and Elo as a GBT feature | P2 |
 | MH7-FEAT-02 | Opponent raw box-score averages (M+W) | Six stats, each as `low_avg_opp_{stat}`, `high_avg_opp_{stat}`, `avg_opp_{stat}_diff` (Low − High), where `{stat}` ∈ {Score, FGA, Blk, PF, TO, Stl}: for each team, the average stats recorded **by opponents against that team** across regular-season games (OT-normalized per §3.3). `low_avg_opp_Score` = mean points allowed by LowTeamID per game; higher values indicate weaker defense. All six diffs follow the schema convention (LowTeamID value minus HighTeamID value). Men's detailed results available from 2003; women's from 2010; training floor is 2010 for both leagues per §2.4 — pre-2010 rows have these columns set to null | Frozen leader challenger | Raw opponent-perspective counting stats provide a simpler, interpretable defensive quality and schedule-strength proxy that is orthogonal to possession-adjusted efficiency; GBT can learn non-linear combinations that complement `def_eff` | P3 |
+| GC-FEAT-01 | Conditional round-progression strength (M+W) | `low_cond_r{n}_strength = rd{n}_win / rd{n-1}_win` for n ∈ {2, 3, 4} per team from external bracket forecast; `cond_r{n}_strength_diff = low_cond_r{n}_strength − high_cond_r{n}_strength` (positive when LowTeam has higher conditional strength at round n); use only forecasts from the earliest available pre-tournament date (before Selection Sunday) | `LATE-EXT-04` (sub-approach B); requires `data/processed/tourney_forecasts/` with M+W coverage confirmed post-Selection Sunday | Conditional round-progression probabilities extract bracket-position-aware team strength at each round independently of the R1 matchup; a team with high `cond_r2_strength` is likely to win R2 even after controlling for their R1 seed, providing signal orthogonal to Elo and seed features; join to matchup table via `data/TeamSpellings.csv` | P1 (if LATE-EXT-04 data secured) |
+| COOPER-FEAT-01 | Pace feature (M+W) | `low_pace` = OT-normalized avg of (LowTeamID score + opponent score) per regular-season game; `high_pace` equivalent; `pace_diff = low_pace − high_pace` (positive when LowTeam plays in higher-scoring environments) | Frozen leader challenger (GBT; add to current best feature set per league) | Higher-scoring game environments have higher score variance (a point is worth less signal when 160 total points are scored vs 120); GBT can learn non-linear interactions between pace and margin/efficiency features that scalar ratings miss; also serves as a normalization baseline for `avg_opp_Score` (MH7-FEAT-02), distinguishing teams that allow many points because they face high-pace opponents from teams with genuinely weak defense; derived from compact results only — no detailed-results dependency | P3 |
 
 ### 9.3 Combination and Validation Experiments
 
