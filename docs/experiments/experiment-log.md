@@ -29,6 +29,145 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-FEAT bundle v1: late-5, site profile, win-quality, conference rank, and pedigree
+
+Status: Completed
+
+Hypothesis:
+- A bundled set of low-cost context features capturing recent form, site performance, win-quality bins, conference standing, and tournament pedigree may improve the current leader families without a broader architecture change.
+
+Dependencies:
+- feature:late_feat_24_late5_split_v1
+- feature:late_feat_27_site_profiles_v1
+- feature:late_feat_28_win_quality_bins_v1
+- feature:late_feat_29_conference_percentile_v1
+- feature:late_feat_31_program_pedigree_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+
+MLflow:
+- Run name: `late-feat-bundle-24-27-28-29-31-men`
+- Run name: `late-feat-bundle-24-27-28-29-31-women`
+
+Result:
+- Added eight matchup differentials: `late5_off_diff`, `late5_def_diff`, `road_win_pct_diff`, `neutral_net_eff_diff`, `close_win_pct_5_diff`, `blowout_win_pct_diff`, `conf_pct_rank_diff`, and `pedigree_score_diff`.
+- Men scored `flat_brier = 0.200470` and `log_loss = 0.590627`, materially worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.133791` and `log_loss = 0.406771`, also worse than the frozen women leader `0.130427`.
+- This bundled late-feature slice does not advance in either league.
+
+Re-test if:
+- A later branch isolates one of these features and shows a clear single-feature gain.
+- Better external data supports a narrower version of the site or pedigree features.
+
+Related:
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [tests/test_primary_features.py](/c:/Users/brown/Documents/GitHub/mmlm2026/tests/test_primary_features.py)
+- [tests/test_women_round_group_routing.py](/c:/Users/brown/Documents/GitHub/mmlm2026/tests/test_women_round_group_routing.py)
+
+---
+## 2026-03-13 — LATE-ARCH-META-01 v1: logit-Ridge meta-learner
+
+Status: Completed
+
+Hypothesis:
+- A Ridge meta-learner on logit-transformed OOF base predictions may beat the frozen single-model leaders by combining near-miss challenger members more effectively than the current direct model-selection path.
+
+Dependencies:
+- architecture:late_arch_meta_01_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+- challenger:late_rate_01_v2
+- challenger:late_feat_26
+- challenger:late_feat_23
+
+MLflow:
+- Run name: `late-arch-meta-01-men`
+- Run name: `late-arch-meta-01-women`
+
+Result:
+- Built a reusable logit-Ridge meta stack over regenerated out-of-season base predictions.
+- Men members: frozen reference margin model, ESPN-strength near miss, and Pythagorean near miss.
+- Women members: frozen ESPN four-factor leader, routed-basic predecessor, and seed-gap near miss.
+- Women stack scored `flat_brier = 0.135684` and `log_loss = 0.413501`, which is clearly worse than the frozen women leader `0.130427`.
+- Men stack scored `flat_brier = 0.205593` and `log_loss = 0.676478`, dramatically worse than the frozen men leader `0.195566`.
+- The current near-miss base members are too correlated or too weak for this Ridge meta-learner to help.
+
+Re-test if:
+- A later queue item produces materially more diverse base members.
+- The ensemble member set changes enough to justify another stacked meta test.
+
+Related:
+- [src/mmlm2026/evaluation/meta.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/evaluation/meta.py)
+- [scripts/run_logit_ridge_meta.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_logit_ridge_meta.py)
+- [tests/test_meta.py](/c:/Users/brown/Documents/GitHub/mmlm2026/tests/test_meta.py)
+
+---
+## 2026-03-13 — LATE-ARCH-DW-01 v1: decay-weighted training
+
+Status: Completed
+
+Hypothesis:
+- Upweighting recent tournament seasons during training may help the current frozen leader families adapt to modern tournament dynamics without adding new data.
+
+Dependencies:
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+- architecture:late_arch_dw_01_v1
+
+MLflow:
+- Run name: `late-arch-dw-01-men`
+- Run name: `late-arch-dw-01-women`
+
+Result:
+- Applied exponential season-recency decay (`decay_base = 0.9`) to the current men and women leader families.
+- Men scored `flat_brier = 0.199205` and `log_loss = 0.584961`, materially worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.132470` and `log_loss = 0.407918`, which was closer but still behind the frozen women leader `0.130427`.
+- This simple recency-weighted training scheme does not advance in either league.
+
+Re-test if:
+- A later branch combines decay weighting with a different architecture or external data source.
+- The validation window changes materially enough that modern-season weighting should be revisited.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-EXT-03 v1: ESPN component-level situational decomposition
+
+Status: Completed
+
+Hypothesis:
+- Exposing ESPN four-factor components individually, instead of only the composite strength score, may let the current men and women leader families use richer offensive and defensive situational structure.
+
+Dependencies:
+- dataset:espn_processed_v1
+- feature:late_feat_18_espn_four_factor_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+
+MLflow:
+- Run name: `late-ext-03-men-espn-components`
+- Run name: `late-ext-03-women-espn-components`
+
+Result:
+- Added component-level ESPN differentials for `efg`, `tov_rate`, `orb_pct`, `ftr`, and the corresponding opponent-side defensive components on top of the current frozen-path challengers.
+- Men scored `flat_brier = 0.199281` and `log_loss = 0.578924`, which is materially worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.136654` and `log_loss = 0.416621`, which is also clearly worse than the frozen women leader `0.130427`.
+- This richer ESPN decomposition does not combine cleanly with the current frozen leader families and should not advance.
+
+Re-test if:
+- ESPN parsing gains materially better historical coverage or cleaner player/game joins.
+- A later architecture is explicitly designed to absorb correlated component-level features.
+
+Related:
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
 ## 2026-03-13 — LATE-RATE-02 v1: women ESPN four-factor latent strength
 
 Status: Completed

@@ -5,12 +5,17 @@ import pytest
 
 from mmlm2026.features.primary import (
     add_phase_c_features,
+    build_conference_percentile_features,
+    build_late5_form_split_features,
     build_market_implied_strength_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
+    build_program_pedigree_features,
     build_season_momentum_features,
+    build_site_performance_features,
     build_team_season_summary,
+    build_win_quality_bin_features,
     phase_ab_feature_columns,
     phase_abc_feature_columns,
 )
@@ -254,6 +259,14 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "tourney_elo": [1525.0, 1465.0],
             "elo_momentum": [45.0, -10.0],
             "ridge_strength": [8.0, -4.0],
+            "espn_efg": [0.55, 0.55],
+            "espn_tov_rate": [0.14, 0.18],
+            "espn_orb_pct": [0.32, 0.17],
+            "espn_ftr": [0.29, 0.22],
+            "espn_opp_efg": [0.42, 0.48],
+            "espn_opp_tov_rate": [0.21, 0.19],
+            "espn_opp_orb_pct": [0.20, 0.28],
+            "espn_opp_ftr": [0.18, 0.21],
             "espn_four_factor_strength": [1.2, -0.3],
             "espn_rotation_stability": [0.8, -0.1],
             "recent_games": [10, 10],
@@ -299,6 +312,14 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
     assert feature_table["elo_momentum_diff"].iloc[0] == pytest.approx(55.0)
     assert feature_table["ridge_strength_diff"].iloc[0] == pytest.approx(12.0)
     assert feature_table["espn_four_factor_strength_diff"].iloc[0] == pytest.approx(1.5)
+    assert feature_table["espn_efg_diff"].iloc[0] == pytest.approx(0.0)
+    assert feature_table["espn_tov_rate_diff"].iloc[0] == pytest.approx(0.04)
+    assert feature_table["espn_orb_pct_diff"].iloc[0] == pytest.approx(0.15)
+    assert feature_table["espn_ftr_diff"].iloc[0] == pytest.approx(0.07)
+    assert feature_table["espn_opp_efg_diff"].iloc[0] == pytest.approx(0.06)
+    assert feature_table["espn_opp_tov_rate_diff"].iloc[0] == pytest.approx(0.02)
+    assert feature_table["espn_opp_orb_pct_diff"].iloc[0] == pytest.approx(0.08)
+    assert feature_table["espn_opp_ftr_diff"].iloc[0] == pytest.approx(0.03)
     assert feature_table["espn_rotation_stability_diff"].iloc[0] == pytest.approx(0.9)
     assert feature_table["close_win_pct_diff"].iloc[0] == pytest.approx(0.5)
     assert feature_table["mov_per100_diff"].iloc[0] == pytest.approx(20.0)
@@ -388,3 +409,67 @@ def test_add_phase_c_features_adds_interaction_columns() -> None:
     assert enriched["high_off_vs_low_def"].iloc[0] == pytest.approx(12.0)
     assert enriched["tempo_product"].iloc[0] == pytest.approx(4760.0)
     assert "tempo_product" in phase_abc_feature_columns("W")
+
+
+def test_build_late_bundle_feature_builders() -> None:
+    detailed = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "DayNum": [120, 122],
+            "WTeamID": [10, 20],
+            "LTeamID": [20, 10],
+            "WScore": [80, 71],
+            "LScore": [70, 66],
+            "WFGA": [60, 58],
+            "WFTA": [18, 16],
+            "WOR": [10, 9],
+            "WTO": [12, 11],
+            "LFGA": [55, 54],
+            "LFTA": [15, 14],
+            "LOR": [8, 7],
+            "LTO": [13, 12],
+        }
+    )
+    compact = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "DayNum": [120, 122],
+            "WTeamID": [10, 20],
+            "LTeamID": [20, 10],
+            "WScore": [80, 71],
+            "LScore": [70, 66],
+            "WLoc": ["N", "A"],
+        }
+    )
+    conferences = pd.DataFrame(
+        {
+            "Season": [2025, 2025],
+            "TeamID": [10, 20],
+            "ConfAbbrev": ["A10", "A10"],
+        }
+    )
+    seeds = pd.DataFrame(
+        {
+            "Season": [2024, 2024, 2025, 2025],
+            "TeamID": [10, 20, 10, 20],
+            "Seed": ["W05", "W12", "W04", "W11"],
+        }
+    )
+    results = pd.DataFrame({"Season": [2024], "WTeamID": [10], "LTeamID": [20]})
+
+    late5 = build_late5_form_split_features(detailed)
+    site = build_site_performance_features(compact)
+    quality = build_win_quality_bin_features(compact)
+    summary = build_team_season_summary(compact)
+    conf = build_conference_percentile_features(
+        summary[["Season", "TeamID", "avg_margin"]],
+        conferences,
+        strength_col="avg_margin",
+    )
+    pedigree = build_program_pedigree_features(seeds, results)
+
+    assert {"late5_off_eff", "late5_def_eff"}.issubset(late5.columns)
+    assert {"road_win_pct", "neutral_margin"}.issubset(site.columns)
+    assert {"close_win_pct_5", "blowout_win_pct_15"}.issubset(quality.columns)
+    assert "conf_pct_rank" in conf.columns
+    assert "pedigree_score" in pedigree.columns

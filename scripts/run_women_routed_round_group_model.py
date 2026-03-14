@@ -22,7 +22,15 @@ from mmlm2026.features.elo import (
     compute_tournament_only_elo_ratings,
 )
 from mmlm2026.features.espn import load_espn_women_four_factor_strength_features
-from mmlm2026.features.primary import build_season_momentum_features, build_team_season_summary
+from mmlm2026.features.primary import (
+    build_conference_percentile_features,
+    build_late5_form_split_features,
+    build_program_pedigree_features,
+    build_season_momentum_features,
+    build_site_performance_features,
+    build_team_season_summary,
+    build_win_quality_bin_features,
+)
 from mmlm2026.submission.frozen_models import (
     WOMEN_ELO_PARAMS,
     build_seeded_submission_rows,
@@ -87,6 +95,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-espn-four-factor",
         action="store_true",
         help="Include ESPN-derived women four-factor strength differential.",
+    )
+    parser.add_argument(
+        "--include-espn-components",
+        action="store_true",
+        help="Include ESPN-derived women four-factor component differentials.",
+    )
+    parser.add_argument(
+        "--include-late-bundle",
+        action="store_true",
+        help="Include the bundled late challenger feature set (24/27/28/29/31).",
+    )
+    parser.add_argument(
+        "--use-decay-weighting",
+        action="store_true",
+        help="Apply exponential season-recency weights during training.",
+    )
+    parser.add_argument(
+        "--decay-base",
+        type=float,
+        default=0.9,
+        help="Per-season exponential decay base for training weights.",
     )
     return parser
 
@@ -166,6 +195,112 @@ def main() -> int:
             diff_name="espn_four_factor_strength_diff",
         )
         feature_cols.append("espn_four_factor_strength_diff")
+        if args.include_espn_components:
+            feature_table, espn_component_cols = _attach_espn_component_features(
+                feature_table,
+                espn_features,
+            )
+            feature_cols.extend(espn_component_cols)
+    elif args.include_espn_components:
+        seasons = sorted(
+            season
+            for season in feature_table["Season"].drop_duplicates().astype(int).tolist()
+            if season <= max(args.holdout_seasons)
+        )
+        espn_features = load_espn_women_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=context.regular_season,
+            team_spellings_path=args.team_spellings_path,
+        )
+        feature_table, espn_component_cols = _attach_espn_component_features(
+            feature_table,
+            espn_features,
+        )
+        feature_cols.extend(espn_component_cols)
+    if args.include_late_bundle:
+        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
+        late5 = build_late5_form_split_features(regular_season_detailed)
+        site_profiles = build_site_performance_features(context.regular_season)
+        win_quality = build_win_quality_bin_features(context.regular_season)
+        summary_strength = build_team_season_summary(context.regular_season)[
+            ["Season", "TeamID", "avg_margin"]
+        ]
+        conf_rank = build_conference_percentile_features(
+            summary_strength,
+            team_conferences,
+            strength_col="avg_margin",
+        )
+        pedigree = build_program_pedigree_features(context.seeds, context.results)
+        late_bundle = (
+            late5.merge(site_profiles, on=["Season", "TeamID"], how="outer")
+            .merge(win_quality, on=["Season", "TeamID"], how="outer")
+            .merge(conf_rank, on=["Season", "TeamID"], how="outer")
+            .merge(pedigree, on=["Season", "TeamID"], how="outer")
+            .fillna(0.0)
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "late5_off_eff"]],
+            feature_name="late5_off_eff",
+            diff_name="late5_off_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "late5_def_eff"]],
+            feature_name="late5_def_eff",
+            diff_name="late5_def_diff",
+            defensive=True,
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "road_win_pct"]],
+            feature_name="road_win_pct",
+            diff_name="road_win_pct_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "neutral_margin"]],
+            feature_name="neutral_margin",
+            diff_name="neutral_net_eff_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "close_win_pct_5"]],
+            feature_name="close_win_pct_5",
+            diff_name="close_win_pct_5_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "blowout_win_pct_15"]],
+            feature_name="blowout_win_pct_15",
+            diff_name="blowout_win_pct_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "conf_pct_rank"]],
+            feature_name="conf_pct_rank",
+            diff_name="conf_pct_rank_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late_bundle[["Season", "TeamID", "pedigree_score"]],
+            feature_name="pedigree_score",
+            diff_name="pedigree_score_diff",
+        )
+        feature_cols.extend(
+            [
+                "late5_off_diff",
+                "late5_def_diff",
+                "road_win_pct_diff",
+                "neutral_net_eff_diff",
+                "close_win_pct_5_diff",
+                "blowout_win_pct_diff",
+                "conf_pct_rank_diff",
+                "pedigree_score_diff",
+            ]
+        )
 
     output_dir = args.output_dir / "w_routed_round_group"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -179,6 +314,8 @@ def main() -> int:
         feature_table,
         holdout_seasons=args.holdout_seasons,
         feature_cols=feature_cols,
+        use_decay_weighting=args.use_decay_weighting,
+        decay_base=args.decay_base,
     )
     validation_artifacts = save_validation_artifacts(summary, output_dir=output_dir / "validation")
 
@@ -253,11 +390,99 @@ def main() -> int:
             feature_name="espn_four_factor_strength",
             diff_name="espn_four_factor_strength_diff",
         )
+        if args.include_espn_components:
+            infer_frame, _ = _attach_espn_component_features(infer_frame, espn_features)
+    elif args.include_espn_components:
+        seasons = sorted(
+            season
+            for season in context.seeds["Season"].drop_duplicates().astype(int).tolist()
+            if season <= latest_holdout
+        )
+        espn_features = load_espn_women_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=context.regular_season,
+            team_spellings_path=args.team_spellings_path,
+        )
+        infer_frame, _ = _attach_espn_component_features(infer_frame, espn_features)
+    if args.include_late_bundle:
+        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
+        late5 = build_late5_form_split_features(regular_season_detailed)
+        site_profiles = build_site_performance_features(context.regular_season)
+        win_quality = build_win_quality_bin_features(context.regular_season)
+        summary_strength = build_team_season_summary(context.regular_season)[
+            ["Season", "TeamID", "avg_margin"]
+        ]
+        conf_rank = build_conference_percentile_features(
+            summary_strength,
+            team_conferences,
+            strength_col="avg_margin",
+        )
+        pedigree = build_program_pedigree_features(context.seeds, context.results)
+        late_bundle = (
+            late5.merge(site_profiles, on=["Season", "TeamID"], how="outer")
+            .merge(win_quality, on=["Season", "TeamID"], how="outer")
+            .merge(conf_rank, on=["Season", "TeamID"], how="outer")
+            .merge(pedigree, on=["Season", "TeamID"], how="outer")
+            .fillna(0.0)
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "late5_off_eff"]],
+            feature_name="late5_off_eff",
+            diff_name="late5_off_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "late5_def_eff"]],
+            feature_name="late5_def_eff",
+            diff_name="late5_def_diff",
+            defensive=True,
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "road_win_pct"]],
+            feature_name="road_win_pct",
+            diff_name="road_win_pct_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "neutral_margin"]],
+            feature_name="neutral_margin",
+            diff_name="neutral_net_eff_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "close_win_pct_5"]],
+            feature_name="close_win_pct_5",
+            diff_name="close_win_pct_5_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "blowout_win_pct_15"]],
+            feature_name="blowout_win_pct_15",
+            diff_name="blowout_win_pct_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "conf_pct_rank"]],
+            feature_name="conf_pct_rank",
+            diff_name="conf_pct_rank_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late_bundle[["Season", "TeamID", "pedigree_score"]],
+            feature_name="pedigree_score",
+            diff_name="pedigree_score_diff",
+        )
     infer_frame = _score_inference_frame(
         feature_table,
         infer_frame,
         season=latest_holdout,
         feature_cols=feature_cols,
+        use_decay_weighting=args.use_decay_weighting,
+        decay_base=args.decay_base,
     )
     infer_frame["ID"] = infer_rows["ID"].to_numpy()
 
@@ -289,6 +514,8 @@ def _validate_holdouts(
     *,
     holdout_seasons: list[int],
     feature_cols: list[str],
+    use_decay_weighting: bool = False,
+    decay_base: float = 0.9,
     train_min_games: int = 50,
 ) -> ValidationSummary:
     work = frame.loc[frame["outcome"].notna()].copy()
@@ -309,6 +536,8 @@ def _validate_holdouts(
             valid,
             season=holdout_season,
             feature_cols=feature_cols,
+            use_decay_weighting=use_decay_weighting,
+            decay_base=decay_base,
         )
         pred_frame = pd.DataFrame(
             {
@@ -353,9 +582,18 @@ def _score_inference_frame(
     *,
     season: int,
     feature_cols: list[str],
+    use_decay_weighting: bool = False,
+    decay_base: float = 0.9,
 ) -> pd.DataFrame:
     train = frame.loc[frame["Season"] < season].copy()
-    pred = _score_with_routed_models(train, infer_frame, season=season, feature_cols=feature_cols)
+    pred = _score_with_routed_models(
+        train,
+        infer_frame,
+        season=season,
+        feature_cols=feature_cols,
+        use_decay_weighting=use_decay_weighting,
+        decay_base=decay_base,
+    )
     scored = infer_frame.copy()
     scored["Pred"] = pred
     return scored
@@ -367,10 +605,18 @@ def _score_with_routed_models(
     *,
     season: int,
     feature_cols: list[str],
+    use_decay_weighting: bool = False,
+    decay_base: float = 0.9,
 ) -> pd.Series:
     routed_preds: dict[str, pd.Series] = {}
     fallback_model = build_logistic_pipeline(feature_cols)
-    fallback_model.fit(train_frame[feature_cols], train_frame["outcome"].astype(int))
+    fit_kwargs: dict[str, pd.Series] = {}
+    if use_decay_weighting:
+        fit_kwargs["model__sample_weight"] = _season_decay_weights(
+            train_frame["Season"],
+            decay_base=decay_base,
+        )
+    fallback_model.fit(train_frame[feature_cols], train_frame["outcome"].astype(int), **fit_kwargs)
     fallback_pred = pd.Series(
         fallback_model.predict_proba(target_frame[feature_cols])[:, 1],
         index=target_frame.index,
@@ -382,7 +628,17 @@ def _score_with_routed_models(
         if group_train.empty:
             continue
         model = build_logistic_pipeline(feature_cols)
-        model.fit(group_train[feature_cols], group_train["outcome"].astype(int))
+        group_fit_kwargs: dict[str, pd.Series] = {}
+        if use_decay_weighting:
+            group_fit_kwargs["model__sample_weight"] = _season_decay_weights(
+                group_train["Season"],
+                decay_base=decay_base,
+            )
+        model.fit(
+            group_train[feature_cols],
+            group_train["outcome"].astype(int),
+            **group_fit_kwargs,
+        )
         routed_preds[round_group] = pd.Series(
             model.predict_proba(target_frame[feature_cols])[:, 1],
             index=target_frame.index,
@@ -399,12 +655,21 @@ def _score_with_routed_models(
     )
 
 
+def _season_decay_weights(seasons: pd.Series, *, decay_base: float) -> pd.Series:
+    latest = int(seasons.max())
+    weights = seasons.astype(int).map(
+        lambda season: float(decay_base ** (latest - int(season)))
+    )
+    return weights.astype(float)
+
+
 def _attach_team_scalar_feature(
     frame: pd.DataFrame,
     team_feature: pd.DataFrame,
     *,
     feature_name: str,
     diff_name: str,
+    defensive: bool = False,
 ) -> pd.DataFrame:
     enriched = (
         frame.merge(
@@ -424,11 +689,45 @@ def _attach_team_scalar_feature(
             validate="many_to_one",
         )
     )
-    enriched[diff_name] = (
-        enriched[f"low_{feature_name}"].astype(float)
-        - enriched[f"high_{feature_name}"].astype(float)
-    )
+    if defensive:
+        enriched[diff_name] = (
+            enriched[f"high_{feature_name}"].astype(float)
+            - enriched[f"low_{feature_name}"].astype(float)
+        )
+    else:
+        enriched[diff_name] = (
+            enriched[f"low_{feature_name}"].astype(float)
+            - enriched[f"high_{feature_name}"].astype(float)
+        )
     return enriched
+
+
+def _attach_espn_component_features(
+    frame: pd.DataFrame,
+    espn_features: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[str]]:
+    component_specs = [
+        ("espn_efg", "espn_efg_diff"),
+        ("espn_tov_rate", "espn_tov_rate_diff"),
+        ("espn_orb_pct", "espn_orb_pct_diff"),
+        ("espn_ftr", "espn_ftr_diff"),
+        ("espn_opp_efg", "espn_opp_efg_diff"),
+        ("espn_opp_tov_rate", "espn_opp_tov_rate_diff"),
+        ("espn_opp_orb_pct", "espn_opp_orb_pct_diff"),
+        ("espn_opp_ftr", "espn_opp_ftr_diff"),
+    ]
+    enriched = frame
+    added: list[str] = []
+    for feature_name, diff_name in component_specs:
+        enriched = _attach_team_scalar_feature(
+            enriched,
+            espn_features[["Season", "TeamID", feature_name]],
+            feature_name=feature_name,
+            diff_name=diff_name,
+        )
+        if diff_name not in added:
+            added.append(diff_name)
+    return enriched, added
 
 
 def _group_brier(frame: pd.DataFrame, round_group: str) -> float | None:
@@ -459,6 +758,12 @@ def _log_mlflow_run(
     }
     if args.include_espn_four_factor:
         tags["depends_on"] += ",feature:late_feat_18_espn_four_factor_v1"
+    if args.include_espn_components:
+        tags["depends_on"] += ",feature:late_ext_03_espn_components_v1"
+    if args.use_decay_weighting:
+        tags["depends_on"] += ",arch:late_arch_dw_01_v1"
+    if args.include_late_bundle:
+        tags["depends_on"] += ",feature:late_feat_bundle_24_27_28_29_31_v1"
     with start_tracked_run(args.run_name, tags=tags):
         mlflow.log_params(
             {
@@ -471,6 +776,10 @@ def _log_mlflow_run(
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "include_season_momentum": str(args.include_season_momentum).lower(),
                 "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
+                "include_espn_components": str(args.include_espn_components).lower(),
+                "include_late_bundle": str(args.include_late_bundle).lower(),
+                "use_decay_weighting": str(args.use_decay_weighting).lower(),
+                "decay_base": args.decay_base,
             }
         )
         mlflow.log_metrics(

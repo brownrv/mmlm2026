@@ -30,11 +30,17 @@ from mmlm2026.features.espn import (
     load_espn_men_rotation_stability_features,
 )
 from mmlm2026.features.primary import (
+    build_conference_percentile_features,
+    build_late5_form_split_features,
     build_market_implied_strength_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
+    build_program_pedigree_features,
     build_season_momentum_features,
+    build_site_performance_features,
+    build_team_season_summary,
+    build_win_quality_bin_features,
 )
 from mmlm2026.utils.mlflow_tracking import start_tracked_run
 
@@ -81,6 +87,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include ESPN-derived four-factor strength differential as an extra feature.",
     )
     parser.add_argument(
+        "--include-espn-components",
+        action="store_true",
+        help="Include ESPN-derived four-factor component differentials as extra features.",
+    )
+    parser.add_argument(
         "--include-espn-rotation",
         action="store_true",
         help="Include ESPN-derived rotation-stability differential as an extra feature.",
@@ -118,6 +129,22 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include regular-season BetExplorer market-implied strength differential.",
     )
+    parser.add_argument(
+        "--include-late-bundle",
+        action="store_true",
+        help="Include the bundled late challenger feature set (24/27/28/29/31).",
+    )
+    parser.add_argument(
+        "--use-decay-weighting",
+        action="store_true",
+        help="Apply exponential season-recency weights during training.",
+    )
+    parser.add_argument(
+        "--decay-base",
+        type=float,
+        default=0.9,
+        help="Per-season exponential decay base for training weights.",
+    )
     parser.add_argument("--elo-initial-rating", type=float, default=1618.0)
     parser.add_argument("--elo-k-factor", type=float, default=76.0)
     parser.add_argument("--elo-home-advantage", type=float, default=43.0)
@@ -140,6 +167,7 @@ def main() -> int:
     seeds = pd.read_csv(data_dir / "MNCAATourneySeeds.csv")
     slots = pd.read_csv(data_dir / "MNCAATourneySlots.csv")
     conf_tourney = pd.read_csv(data_dir / "MConferenceTourneyGames.csv")
+    team_conferences = pd.read_csv(data_dir / "MTeamConferences.csv")
 
     regular_season = regular_season.loc[regular_season["Season"] >= args.season_floor].copy()
     regular_season_detailed = regular_season_detailed.loc[
@@ -149,6 +177,9 @@ def main() -> int:
     seeds = seeds.loc[seeds["Season"] >= args.season_floor].copy()
     slots = slots.loc[slots["Season"] >= args.season_floor].copy()
     conf_tourney = conf_tourney.loc[conf_tourney["Season"] >= args.season_floor].copy()
+    team_conferences = team_conferences.loc[
+        team_conferences["Season"] >= args.season_floor
+    ].copy()
 
     elo_ratings = compute_pre_tourney_elo_ratings(
         regular_season,
@@ -224,7 +255,60 @@ def main() -> int:
             how="left",
             validate="one_to_one",
         )
+    if args.include_late_bundle:
+        late5 = build_late5_form_split_features(
+            regular_season_detailed,
+            day_floor=115,
+            day_cutoff=args.day_cutoff,
+        )
+        site_profiles = build_site_performance_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
+        win_quality = build_win_quality_bin_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
+        summary_strength = build_team_season_summary(regular_season, day_cutoff=args.day_cutoff)[
+            ["Season", "TeamID", "avg_margin"]
+        ]
+        conf_rank = build_conference_percentile_features(
+            summary_strength,
+            team_conferences,
+            strength_col="avg_margin",
+        )
+        pedigree = build_program_pedigree_features(seeds, results)
+        team_features = (
+            team_features.merge(late5, on=["Season", "TeamID"], how="left", validate="one_to_one")
+            .merge(
+                site_profiles,
+                on=["Season", "TeamID"],
+                how="left",
+                validate="one_to_one",
+            )
+            .merge(win_quality, on=["Season", "TeamID"], how="left", validate="one_to_one")
+            .merge(conf_rank, on=["Season", "TeamID"], how="left", validate="one_to_one")
+            .merge(pedigree, on=["Season", "TeamID"], how="left", validate="one_to_one")
+        )
     if args.include_espn_four_factor:
+        seasons = sorted(
+            season
+            for season in team_features["Season"].drop_duplicates().astype(int).tolist()
+            if season <= max(args.holdout_seasons)
+        )
+        espn_features = load_espn_men_four_factor_strength_features(
+            espn_root=args.espn_root,
+            seasons=seasons,
+            regular_season_results=regular_season_detailed,
+            team_spellings_path=args.team_spellings_path,
+        )
+        team_features = team_features.merge(
+            espn_features,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_espn_components and not args.include_espn_four_factor:
         seasons = sorted(
             season
             for season in team_features["Season"].drop_duplicates().astype(int).tolist()
@@ -282,6 +366,19 @@ def main() -> int:
         feature_cols.append("ridge_strength_diff")
     if args.include_espn_four_factor:
         feature_cols.append("espn_four_factor_strength_diff")
+    if args.include_espn_components:
+        feature_cols.extend(
+            [
+                "espn_efg_diff",
+                "espn_tov_rate_diff",
+                "espn_orb_pct_diff",
+                "espn_ftr_diff",
+                "espn_opp_efg_diff",
+                "espn_opp_tov_rate_diff",
+                "espn_opp_orb_pct_diff",
+                "espn_opp_ftr_diff",
+            ]
+        )
     if args.include_espn_rotation:
         feature_cols.append("espn_rotation_stability_diff")
     if args.include_tourney_elo:
@@ -296,6 +393,19 @@ def main() -> int:
         feature_cols.append("season_momentum_diff")
     if args.include_market_strength:
         feature_cols.append("market_implied_strength_diff")
+    if args.include_late_bundle:
+        feature_cols.extend(
+            [
+                "late5_off_diff",
+                "late5_def_diff",
+                "road_win_pct_diff",
+                "neutral_net_eff_diff",
+                "close_win_pct_5_diff",
+                "blowout_win_pct_diff",
+                "conf_pct_rank_diff",
+                "pedigree_score_diff",
+            ]
+        )
     calibration_feature_cols = [
         "adj_qg_diff",
         "mov_per100_diff",
@@ -306,6 +416,19 @@ def main() -> int:
         calibration_feature_cols.append("ridge_strength_diff")
     if args.include_espn_four_factor:
         calibration_feature_cols.append("espn_four_factor_strength_diff")
+    if args.include_espn_components:
+        calibration_feature_cols.extend(
+            [
+                "espn_efg_diff",
+                "espn_tov_rate_diff",
+                "espn_orb_pct_diff",
+                "espn_ftr_diff",
+                "espn_opp_efg_diff",
+                "espn_opp_tov_rate_diff",
+                "espn_opp_orb_pct_diff",
+                "espn_opp_ftr_diff",
+            ]
+        )
     if args.include_espn_rotation:
         calibration_feature_cols.append("espn_rotation_stability_diff")
     if args.include_tourney_elo:
@@ -320,6 +443,19 @@ def main() -> int:
         calibration_feature_cols.append("season_momentum_diff")
     if args.include_market_strength:
         calibration_feature_cols.append("market_implied_strength_diff")
+    if args.include_late_bundle:
+        calibration_feature_cols.extend(
+            [
+                "late5_off_diff",
+                "late5_def_diff",
+                "road_win_pct_diff",
+                "neutral_net_eff_diff",
+                "close_win_pct_5_diff",
+                "blowout_win_pct_diff",
+                "conf_pct_rank_diff",
+                "pedigree_score_diff",
+            ]
+        )
 
     output_dir = args.output_dir / "m_reference_margin"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -335,6 +471,8 @@ def main() -> int:
         seeds=seeds,
         team_features=team_features,
         elo_scale=args.elo_scale,
+        use_decay_weighting=args.use_decay_weighting,
+        decay_base=args.decay_base,
     )
     validation_artifacts = save_validation_artifacts(summary, output_dir=output_dir / "validation")
 
@@ -451,6 +589,8 @@ def _validate_margin_holdouts(
     seeds: pd.DataFrame,
     team_features: pd.DataFrame,
     elo_scale: float,
+    use_decay_weighting: bool = False,
+    decay_base: float = 0.9,
     train_min_games: int = 50,
 ) -> ValidationSummary:
     work = frame.loc[frame["outcome"].notna() & frame["margin"].notna()].copy()
@@ -468,7 +608,13 @@ def _validate_margin_holdouts(
 
         model = build_margin_pipeline(feature_cols)
         mirrored_train = _mirror_margin_training_rows(train, feature_cols)
-        model.fit(mirrored_train[feature_cols], mirrored_train["margin"])
+        fit_kwargs: dict[str, pd.Series] = {}
+        if use_decay_weighting:
+            fit_kwargs["model__sample_weight"] = _season_decay_weights(
+                mirrored_train["Season"],
+                decay_base=decay_base,
+            )
+        model.fit(mirrored_train[feature_cols], mirrored_train["margin"], **fit_kwargs)
         sigma = _estimate_residual_sigma(model, mirrored_train, feature_cols)
         pred_margin = pd.Series(model.predict(valid[feature_cols]), index=valid.index)
         pred_prob_raw = _margin_to_probability(pred_margin, sigma)
@@ -480,6 +626,8 @@ def _validate_margin_holdouts(
             seeds=seeds,
             team_features=team_features,
             elo_scale=elo_scale,
+            use_decay_weighting=use_decay_weighting,
+            decay_base=decay_base,
         )
         pred_prob = _blend_probabilities(
             _apply_temperature(pred_prob_raw, calibration_state.temperature),
@@ -533,6 +681,14 @@ def _mirror_margin_training_rows(frame: pd.DataFrame, feature_cols: list[str]) -
         mirrored[col] = -mirrored[col]
     mirrored["margin"] = -mirrored["margin"]
     return pd.concat([original, mirrored], ignore_index=True)
+
+
+def _season_decay_weights(seasons: pd.Series, *, decay_base: float) -> pd.Series:
+    latest = int(seasons.max())
+    weights = seasons.astype(int).map(
+        lambda season: float(decay_base ** (latest - int(season)))
+    )
+    return weights.astype(float)
 
 
 def _estimate_residual_sigma(
@@ -613,6 +769,8 @@ def _fit_reference_calibration(
     seeds: pd.DataFrame,
     team_features: pd.DataFrame,
     elo_scale: float,
+    use_decay_weighting: bool = False,
+    decay_base: float = 0.9,
     cal_seasons: int = 8,
     alpha_fallback: float = 0.45,
 ) -> CalibrationState:
@@ -639,7 +797,13 @@ def _fit_reference_calibration(
 
         v4_model = build_margin_pipeline(calibration_feature_cols)
         mirrored_v4 = _mirror_margin_training_rows(train, calibration_feature_cols)
-        v4_model.fit(mirrored_v4[calibration_feature_cols], mirrored_v4["margin"])
+        fit_kwargs: dict[str, pd.Series] = {}
+        if use_decay_weighting:
+            fit_kwargs["model__sample_weight"] = _season_decay_weights(
+                mirrored_v4["Season"],
+                decay_base=decay_base,
+            )
+        v4_model.fit(mirrored_v4[calibration_feature_cols], mirrored_v4["margin"], **fit_kwargs)
         sigma_v4 = _estimate_residual_sigma(v4_model, mirrored_v4, calibration_feature_cols)
         valid_margin = pd.Series(
             v4_model.predict(valid[calibration_feature_cols]),
@@ -753,6 +917,7 @@ def _log_mlflow_run(
             "feature:elo_tuned_carryover_men_v1"
             + (",feature:late_rate_01_ridge_strength_v1" if args.include_ridge_strength else "")
             + (",feature:late_feat_18_espn_four_factor_v1" if args.include_espn_four_factor else "")
+            + (",feature:late_ext_03_espn_components_v1" if args.include_espn_components else "")
             + (",feature:late_feat_19_espn_rotation_v1" if args.include_espn_rotation else "")
             + (",feature:late_feat_21_tourney_elo_v1" if args.include_tourney_elo else "")
             + (",feature:late_feat_22_elo_momentum_v1" if args.include_elo_momentum else "")
@@ -764,6 +929,8 @@ def _log_mlflow_run(
                 if args.include_market_strength
                 else ""
             )
+            + (",feature:late_feat_bundle_24_27_28_29_31_v1" if args.include_late_bundle else "")
+            + (",arch:late_arch_dw_01_v1" if args.use_decay_weighting else "")
         ),
         "retest_if": "men situational features or margin-to-probability conversion change",
         "leakage_audit": "passed",
@@ -779,6 +946,7 @@ def _log_mlflow_run(
                 "margin_to_probability": "gaussian_cdf",
                 "include_ridge_strength": str(args.include_ridge_strength).lower(),
                 "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
+                "include_espn_components": str(args.include_espn_components).lower(),
                 "include_espn_rotation": str(args.include_espn_rotation).lower(),
                 "include_tourney_elo": str(args.include_tourney_elo).lower(),
                 "include_elo_momentum": str(args.include_elo_momentum).lower(),
@@ -786,6 +954,9 @@ def _log_mlflow_run(
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "include_season_momentum": str(args.include_season_momentum).lower(),
                 "include_market_strength": str(args.include_market_strength).lower(),
+                "include_late_bundle": str(args.include_late_bundle).lower(),
+                "use_decay_weighting": str(args.use_decay_weighting).lower(),
+                "decay_base": args.decay_base,
                 "temperature": temperature,
                 "alpha": alpha,
             }

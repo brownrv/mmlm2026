@@ -155,6 +155,331 @@ def build_season_momentum_features(
     ).reset_index(drop=True)
 
 
+def build_late5_form_split_features(
+    regular_season_detailed_results: pd.DataFrame,
+    *,
+    day_floor: int = 115,
+    day_cutoff: int = 134,
+    n_games: int = 5,
+) -> pd.DataFrame:
+    """Build late-season offensive and defensive form from the last N pre-tourney games."""
+    required = {
+        "Season",
+        "DayNum",
+        "WTeamID",
+        "LTeamID",
+        "WScore",
+        "LScore",
+        "WFGA",
+        "WFTA",
+        "WOR",
+        "WTO",
+        "LFGA",
+        "LFTA",
+        "LOR",
+        "LTO",
+    }
+    missing = required.difference(regular_season_detailed_results.columns)
+    if missing:
+        raise ValueError(
+            f"Regular season detailed results missing required columns: {sorted(missing)}"
+        )
+
+    filtered = regular_season_detailed_results.loc[
+        (regular_season_detailed_results["DayNum"] >= day_floor)
+        & (regular_season_detailed_results["DayNum"] < day_cutoff)
+    ].copy()
+    rows: list[dict[str, float | int]] = []
+    for _, row in filtered.iterrows():
+        winner_poss = (
+            float(row["WFGA"]) - float(row["WOR"]) + float(row["WTO"]) + 0.475 * float(row["WFTA"])
+        )
+        loser_poss = (
+            float(row["LFGA"]) - float(row["LOR"]) + float(row["LTO"]) + 0.475 * float(row["LFTA"])
+        )
+        rows.append(
+            {
+                "Season": int(row["Season"]),
+                "DayNum": int(row["DayNum"]),
+                "TeamID": int(row["WTeamID"]),
+                "late5_off_eff": 100.0 * float(row["WScore"]) / max(winner_poss, 1.0),
+                "late5_def_eff": 100.0 * float(row["LScore"]) / max(loser_poss, 1.0),
+            }
+        )
+        rows.append(
+            {
+                "Season": int(row["Season"]),
+                "DayNum": int(row["DayNum"]),
+                "TeamID": int(row["LTeamID"]),
+                "late5_off_eff": 100.0 * float(row["LScore"]) / max(loser_poss, 1.0),
+                "late5_def_eff": 100.0 * float(row["WScore"]) / max(winner_poss, 1.0),
+            }
+        )
+
+    team_games = pd.DataFrame(rows)
+    if team_games.empty:
+        return pd.DataFrame(columns=["Season", "TeamID", "late5_off_eff", "late5_def_eff"])
+    latest = (
+        team_games.sort_values(["Season", "TeamID", "DayNum"], ascending=[True, True, False])
+        .groupby(["Season", "TeamID"], group_keys=False)
+        .head(n_games)
+    )
+    return (
+        latest.groupby(["Season", "TeamID"], as_index=False)
+        .agg(
+            late5_off_eff=("late5_off_eff", "mean"),
+            late5_def_eff=("late5_def_eff", "mean"),
+        )
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+
+
+def build_site_performance_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+) -> pd.DataFrame:
+    """Build road and neutral-site performance profiles from compact results."""
+    required = {"Season", "DayNum", "WTeamID", "LTeamID", "WScore", "LScore", "WLoc"}
+    missing = required.difference(regular_season_results.columns)
+    if missing:
+        raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+
+    filtered = regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff].copy()
+    rows: list[dict[str, float | int | str]] = []
+    for _, row in filtered.iterrows():
+        season = int(row["Season"])
+        winner = int(row["WTeamID"])
+        loser = int(row["LTeamID"])
+        winner_margin = float(row["WScore"]) - float(row["LScore"])
+        loc = str(row["WLoc"])
+        winner_site = "road" if loc == "A" else "neutral" if loc == "N" else "home"
+        loser_site = "road" if loc == "H" else "neutral" if loc == "N" else "home"
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": winner,
+                "site": winner_site,
+                "win": 1,
+                "margin": winner_margin,
+            }
+        )
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": loser,
+                "site": loser_site,
+                "win": 0,
+                "margin": -winner_margin,
+            }
+        )
+
+    team_games = pd.DataFrame(rows)
+    if team_games.empty:
+        return pd.DataFrame(
+            columns=[
+                "Season",
+                "TeamID",
+                "road_win_pct",
+                "road_margin",
+                "neutral_win_pct",
+                "neutral_margin",
+            ]
+        )
+
+    road = (
+        team_games.loc[team_games["site"] == "road"]
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(road_win_pct=("win", "mean"), road_margin=("margin", "mean"))
+    )
+    neutral = (
+        team_games.loc[team_games["site"] == "neutral"]
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(neutral_win_pct=("win", "mean"), neutral_margin=("margin", "mean"))
+    )
+    teams = team_games[["Season", "TeamID"]].drop_duplicates()
+    return (
+        teams.merge(road, on=["Season", "TeamID"], how="left")
+        .merge(neutral, on=["Season", "TeamID"], how="left")
+        .fillna(0.0)
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+
+
+def build_win_quality_bin_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+    close_margin: int = 5,
+    blowout_margin: int = 15,
+) -> pd.DataFrame:
+    """Build close-game and blowout win-rate features."""
+    required = {"Season", "DayNum", "WTeamID", "LTeamID", "WScore", "LScore"}
+    missing = required.difference(regular_season_results.columns)
+    if missing:
+        raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+
+    filtered = regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff].copy()
+    close_rows: list[dict[str, float | int]] = []
+    blowout_rows: list[dict[str, float | int]] = []
+    for _, row in filtered.iterrows():
+        season = int(row["Season"])
+        winner = int(row["WTeamID"])
+        loser = int(row["LTeamID"])
+        margin = float(row["WScore"]) - float(row["LScore"])
+        if abs(margin) <= close_margin:
+            close_rows.append({"Season": season, "TeamID": winner, "close_win_pct_5": 1.0})
+            close_rows.append({"Season": season, "TeamID": loser, "close_win_pct_5": 0.0})
+        if margin >= blowout_margin:
+            blowout_rows.append(
+                {"Season": season, "TeamID": winner, "blowout_win_pct_15": 1.0}
+            )
+            blowout_rows.append(
+                {"Season": season, "TeamID": loser, "blowout_win_pct_15": 0.0}
+            )
+
+    teams = pd.concat(
+        [
+            filtered[["Season", "WTeamID"]].rename(columns={"WTeamID": "TeamID"}),
+            filtered[["Season", "LTeamID"]].rename(columns={"LTeamID": "TeamID"}),
+        ],
+        ignore_index=True,
+    ).drop_duplicates()
+    close = (
+        pd.DataFrame(close_rows)
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(close_win_pct_5=("close_win_pct_5", "mean"))
+        if close_rows
+        else pd.DataFrame(columns=["Season", "TeamID", "close_win_pct_5"])
+    )
+    blowout = (
+        pd.DataFrame(blowout_rows)
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(blowout_win_pct_15=("blowout_win_pct_15", "mean"))
+        if blowout_rows
+        else pd.DataFrame(columns=["Season", "TeamID", "blowout_win_pct_15"])
+    )
+    return (
+        teams.merge(close, on=["Season", "TeamID"], how="left")
+        .merge(blowout, on=["Season", "TeamID"], how="left")
+        .fillna(0.0)
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+
+
+def build_conference_percentile_features(
+    strength_frame: pd.DataFrame,
+    team_conferences: pd.DataFrame,
+    *,
+    strength_col: str,
+) -> pd.DataFrame:
+    """Build within-conference percentile rank by a supplied strength column."""
+    required_strength = {"Season", "TeamID", strength_col}
+    missing_strength = required_strength.difference(strength_frame.columns)
+    if missing_strength:
+        raise ValueError(f"Strength frame missing required columns: {sorted(missing_strength)}")
+    required_conf = {"Season", "TeamID", "ConfAbbrev"}
+    missing_conf = required_conf.difference(team_conferences.columns)
+    if missing_conf:
+        raise ValueError(
+            f"Team conference frame missing required columns: {sorted(missing_conf)}"
+        )
+
+    merged = strength_frame[["Season", "TeamID", strength_col]].merge(
+        team_conferences[["Season", "TeamID", "ConfAbbrev"]],
+        on=["Season", "TeamID"],
+        how="left",
+        validate="one_to_one",
+    )
+    merged["conf_pct_rank"] = (
+        merged.groupby(["Season", "ConfAbbrev"])[strength_col]
+        .rank(method="average", pct=True)
+        .astype(float)
+    )
+    return merged[["Season", "TeamID", "conf_pct_rank"]].sort_values(
+        ["Season", "TeamID"]
+    ).reset_index(drop=True)
+
+
+def build_program_pedigree_features(
+    seeds: pd.DataFrame,
+    tourney_results: pd.DataFrame,
+    *,
+    lookback_years: int = 5,
+) -> pd.DataFrame:
+    """Build a simple 5-year tournament pedigree score."""
+    required_seeds = {"Season", "TeamID", "Seed"}
+    missing_seeds = required_seeds.difference(seeds.columns)
+    if missing_seeds:
+        raise ValueError(f"Seed frame missing required columns: {sorted(missing_seeds)}")
+    required_results = {"Season", "WTeamID", "LTeamID"}
+    missing_results = required_results.difference(tourney_results.columns)
+    if missing_results:
+        raise ValueError(f"Tournament results missing required columns: {sorted(missing_results)}")
+
+    seed_work = seeds[["Season", "TeamID", "Seed"]].copy()
+    seed_work["seed_value"] = (
+        seed_work["Seed"].astype(str).str.extract(r"(\d+)").fillna(16).astype(int)
+    )
+    appearances = seed_work.groupby(["Season", "TeamID"], as_index=False).agg(
+        appearances=("TeamID", "size"),
+        avg_seed=("seed_value", "mean"),
+        best_seed=("seed_value", "min"),
+    )
+
+    win_rows: list[dict[str, int]] = []
+    for _, row in tourney_results.iterrows():
+        season = int(row["Season"])
+        win_rows.append({"Season": season, "TeamID": int(row["WTeamID"]), "tourney_wins": 1})
+        win_rows.append({"Season": season, "TeamID": int(row["LTeamID"]), "tourney_wins": 0})
+    wins = (
+        pd.DataFrame(win_rows)
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(tourney_wins=("tourney_wins", "sum"))
+        if win_rows
+        else pd.DataFrame(columns=["Season", "TeamID", "tourney_wins"])
+    )
+
+    season_team = (
+        seed_work[["Season", "TeamID"]]
+        .drop_duplicates()
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+    rows: list[dict[str, float | int]] = []
+    for _, row in season_team.iterrows():
+        season = int(row["Season"])
+        team_id = int(row["TeamID"])
+        prior = appearances.loc[
+            (appearances["TeamID"] == team_id)
+            & (appearances["Season"] >= season - lookback_years)
+            & (appearances["Season"] < season)
+        ]
+        prior_wins = wins.loc[
+            (wins["TeamID"] == team_id)
+            & (wins["Season"] >= season - lookback_years)
+            & (wins["Season"] < season)
+        ]
+        appearances_count = float(len(prior))
+        avg_seed = float(prior["avg_seed"].mean()) if not prior.empty else 16.0
+        best_seed = float(prior["best_seed"].min()) if not prior.empty else 16.0
+        tourney_wins = float(prior_wins["tourney_wins"].sum()) if not prior_wins.empty else 0.0
+        pedigree_score = appearances_count + 0.25 * (17.0 - avg_seed) + 0.5 * tourney_wins + 0.1 * (
+            17.0 - best_seed
+        )
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": team_id,
+                "pedigree_score": pedigree_score,
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
+
+
 def build_market_implied_strength_features(
     regular_season_results: pd.DataFrame,
     *,
@@ -705,6 +1030,16 @@ def _attach_team_feature_diffs(
         "market_implied_win_prob",
         "market_implied_strength",
         "season_momentum",
+        "late5_off_eff",
+        "late5_def_eff",
+        "road_win_pct",
+        "road_margin",
+        "neutral_win_pct",
+        "neutral_margin",
+        "close_win_pct_5",
+        "blowout_win_pct_15",
+        "conf_pct_rank",
+        "pedigree_score",
         "elo",
         "tempo",
         "off_eff",
@@ -731,6 +1066,14 @@ def _attach_team_feature_diffs(
         "tourney_elo",
         "elo_momentum",
         "ridge_strength",
+        "espn_efg",
+        "espn_tov_rate",
+        "espn_orb_pct",
+        "espn_ftr",
+        "espn_opp_efg",
+        "espn_opp_tov_rate",
+        "espn_opp_orb_pct",
+        "espn_opp_ftr",
         "espn_four_factor_strength",
         "espn_rotation_stability",
         "massey_system_count",
@@ -808,6 +1151,32 @@ def _attach_team_feature_diffs(
         merged["season_momentum_diff"] = (
             merged["low_season_momentum"] - merged["high_season_momentum"]
         )
+    if {"low_late5_off_eff", "high_late5_off_eff"}.issubset(merged.columns):
+        merged["late5_off_diff"] = merged["low_late5_off_eff"] - merged["high_late5_off_eff"]
+    if {"low_late5_def_eff", "high_late5_def_eff"}.issubset(merged.columns):
+        merged["late5_def_diff"] = merged["high_late5_def_eff"] - merged["low_late5_def_eff"]
+    if {"low_road_win_pct", "high_road_win_pct"}.issubset(merged.columns):
+        merged["road_win_pct_diff"] = merged["low_road_win_pct"] - merged["high_road_win_pct"]
+    if {"low_neutral_margin", "high_neutral_margin"}.issubset(merged.columns):
+        merged["neutral_net_eff_diff"] = (
+            merged["low_neutral_margin"] - merged["high_neutral_margin"]
+        )
+    if {"low_close_win_pct_5", "high_close_win_pct_5"}.issubset(merged.columns):
+        merged["close_win_pct_5_diff"] = (
+            merged["low_close_win_pct_5"] - merged["high_close_win_pct_5"]
+        )
+    if {"low_blowout_win_pct_15", "high_blowout_win_pct_15"}.issubset(merged.columns):
+        merged["blowout_win_pct_diff"] = (
+            merged["low_blowout_win_pct_15"] - merged["high_blowout_win_pct_15"]
+        )
+    if {"low_conf_pct_rank", "high_conf_pct_rank"}.issubset(merged.columns):
+        merged["conf_pct_rank_diff"] = (
+            merged["low_conf_pct_rank"] - merged["high_conf_pct_rank"]
+        )
+    if {"low_pedigree_score", "high_pedigree_score"}.issubset(merged.columns):
+        merged["pedigree_score_diff"] = (
+            merged["low_pedigree_score"] - merged["high_pedigree_score"]
+        )
     merged["tempo_diff"] = merged["low_tempo"] - merged["high_tempo"]
     merged["off_eff_diff"] = merged["low_off_eff"] - merged["high_off_eff"]
     merged["def_eff_diff"] = merged["high_def_eff"] - merged["low_def_eff"]
@@ -848,6 +1217,32 @@ def _attach_team_feature_diffs(
     if {"low_espn_four_factor_strength", "high_espn_four_factor_strength"}.issubset(merged.columns):
         merged["espn_four_factor_strength_diff"] = (
             merged["low_espn_four_factor_strength"] - merged["high_espn_four_factor_strength"]
+        )
+    if {"low_espn_efg", "high_espn_efg"}.issubset(merged.columns):
+        merged["espn_efg_diff"] = merged["low_espn_efg"] - merged["high_espn_efg"]
+    if {"low_espn_tov_rate", "high_espn_tov_rate"}.issubset(merged.columns):
+        merged["espn_tov_rate_diff"] = (
+            merged["high_espn_tov_rate"] - merged["low_espn_tov_rate"]
+        )
+    if {"low_espn_orb_pct", "high_espn_orb_pct"}.issubset(merged.columns):
+        merged["espn_orb_pct_diff"] = merged["low_espn_orb_pct"] - merged["high_espn_orb_pct"]
+    if {"low_espn_ftr", "high_espn_ftr"}.issubset(merged.columns):
+        merged["espn_ftr_diff"] = merged["low_espn_ftr"] - merged["high_espn_ftr"]
+    if {"low_espn_opp_efg", "high_espn_opp_efg"}.issubset(merged.columns):
+        merged["espn_opp_efg_diff"] = (
+            merged["high_espn_opp_efg"] - merged["low_espn_opp_efg"]
+        )
+    if {"low_espn_opp_tov_rate", "high_espn_opp_tov_rate"}.issubset(merged.columns):
+        merged["espn_opp_tov_rate_diff"] = (
+            merged["low_espn_opp_tov_rate"] - merged["high_espn_opp_tov_rate"]
+        )
+    if {"low_espn_opp_orb_pct", "high_espn_opp_orb_pct"}.issubset(merged.columns):
+        merged["espn_opp_orb_pct_diff"] = (
+            merged["high_espn_opp_orb_pct"] - merged["low_espn_opp_orb_pct"]
+        )
+    if {"low_espn_opp_ftr", "high_espn_opp_ftr"}.issubset(merged.columns):
+        merged["espn_opp_ftr_diff"] = (
+            merged["high_espn_opp_ftr"] - merged["low_espn_opp_ftr"]
         )
     if {"low_espn_rotation_stability", "high_espn_rotation_stability"}.issubset(merged.columns):
         merged["espn_rotation_stability_diff"] = (
