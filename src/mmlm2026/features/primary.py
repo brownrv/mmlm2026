@@ -84,9 +84,7 @@ def build_team_season_summary(
         .reset_index(drop=True)
     )
     score_power = summary["avg_score"].astype(float).clip(lower=1e-6) ** pythag_exponent
-    allowed_power = (
-        summary["avg_points_allowed"].astype(float).clip(lower=1e-6) ** pythag_exponent
-    )
+    allowed_power = summary["avg_points_allowed"].astype(float).clip(lower=1e-6) ** pythag_exponent
     summary["pythag_expectancy"] = score_power / (score_power + allowed_power)
     return summary
 
@@ -150,9 +148,11 @@ def build_season_momentum_features(
     pivoted["H1"] = pivoted["H1"].fillna(0.0).astype(float)
     pivoted["H2"] = pivoted["H2"].fillna(0.0).astype(float)
     pivoted["season_momentum"] = pivoted["H2"] - pivoted["H1"]
-    return pivoted[["Season", "TeamID", "season_momentum"]].sort_values(
-        ["Season", "TeamID"]
-    ).reset_index(drop=True)
+    return (
+        pivoted[["Season", "TeamID", "season_momentum"]]
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
 
 
 def build_late5_form_split_features(
@@ -333,12 +333,8 @@ def build_win_quality_bin_features(
             close_rows.append({"Season": season, "TeamID": winner, "close_win_pct_5": 1.0})
             close_rows.append({"Season": season, "TeamID": loser, "close_win_pct_5": 0.0})
         if margin >= blowout_margin:
-            blowout_rows.append(
-                {"Season": season, "TeamID": winner, "blowout_win_pct_15": 1.0}
-            )
-            blowout_rows.append(
-                {"Season": season, "TeamID": loser, "blowout_win_pct_15": 0.0}
-            )
+            blowout_rows.append({"Season": season, "TeamID": winner, "blowout_win_pct_15": 1.0})
+            blowout_rows.append({"Season": season, "TeamID": loser, "blowout_win_pct_15": 0.0})
 
     teams = pd.concat(
         [
@@ -384,9 +380,7 @@ def build_conference_percentile_features(
     required_conf = {"Season", "TeamID", "ConfAbbrev"}
     missing_conf = required_conf.difference(team_conferences.columns)
     if missing_conf:
-        raise ValueError(
-            f"Team conference frame missing required columns: {sorted(missing_conf)}"
-        )
+        raise ValueError(f"Team conference frame missing required columns: {sorted(missing_conf)}")
 
     merged = strength_frame[["Season", "TeamID", strength_col]].merge(
         team_conferences[["Season", "TeamID", "ConfAbbrev"]],
@@ -399,9 +393,11 @@ def build_conference_percentile_features(
         .rank(method="average", pct=True)
         .astype(float)
     )
-    return merged[["Season", "TeamID", "conf_pct_rank"]].sort_values(
-        ["Season", "TeamID"]
-    ).reset_index(drop=True)
+    return (
+        merged[["Season", "TeamID", "conf_pct_rank"]]
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
 
 
 def build_program_pedigree_features(
@@ -467,8 +463,11 @@ def build_program_pedigree_features(
         avg_seed = float(prior["avg_seed"].mean()) if not prior.empty else 16.0
         best_seed = float(prior["best_seed"].min()) if not prior.empty else 16.0
         tourney_wins = float(prior_wins["tourney_wins"].sum()) if not prior_wins.empty else 0.0
-        pedigree_score = appearances_count + 0.25 * (17.0 - avg_seed) + 0.5 * tourney_wins + 0.1 * (
-            17.0 - best_seed
+        pedigree_score = (
+            appearances_count
+            + 0.25 * (17.0 - avg_seed)
+            + 0.5 * tourney_wins
+            + 0.1 * (17.0 - best_seed)
         )
         rows.append(
             {
@@ -1066,6 +1065,7 @@ def _attach_team_feature_diffs(
         "tourney_elo",
         "elo_momentum",
         "ridge_strength",
+        "glm_quality",
         "espn_efg",
         "espn_tov_rate",
         "espn_orb_pct",
@@ -1078,6 +1078,8 @@ def _attach_team_feature_diffs(
         "espn_rotation_stability",
         "massey_system_count",
         "massey_median_rank",
+        "massey_pca1",
+        "massey_disagreement",
     ]
     available_feature_cols = [col for col in feature_cols if col in team_features.columns]
     features = team_features[["Season", "TeamID", *available_feature_cols]].copy()
@@ -1132,9 +1134,7 @@ def _attach_team_feature_diffs(
         high_expected_elo = 1750.0 - (merged["high_seed"].astype(float) - 1.0) * 25.0
         merged["low_seed_elo_gap"] = merged["low_elo"].astype(float) - low_expected_elo
         merged["high_seed_elo_gap"] = merged["high_elo"].astype(float) - high_expected_elo
-        merged["seed_elo_gap_diff"] = (
-            merged["low_seed_elo_gap"] - merged["high_seed_elo_gap"]
-        )
+        merged["seed_elo_gap_diff"] = merged["low_seed_elo_gap"] - merged["high_seed_elo_gap"]
     merged["win_pct_diff"] = merged["low_win_pct"] - merged["high_win_pct"]
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
     if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):
@@ -1170,13 +1170,9 @@ def _attach_team_feature_diffs(
             merged["low_blowout_win_pct_15"] - merged["high_blowout_win_pct_15"]
         )
     if {"low_conf_pct_rank", "high_conf_pct_rank"}.issubset(merged.columns):
-        merged["conf_pct_rank_diff"] = (
-            merged["low_conf_pct_rank"] - merged["high_conf_pct_rank"]
-        )
+        merged["conf_pct_rank_diff"] = merged["low_conf_pct_rank"] - merged["high_conf_pct_rank"]
     if {"low_pedigree_score", "high_pedigree_score"}.issubset(merged.columns):
-        merged["pedigree_score_diff"] = (
-            merged["low_pedigree_score"] - merged["high_pedigree_score"]
-        )
+        merged["pedigree_score_diff"] = merged["low_pedigree_score"] - merged["high_pedigree_score"]
     merged["tempo_diff"] = merged["low_tempo"] - merged["high_tempo"]
     merged["off_eff_diff"] = merged["low_off_eff"] - merged["high_off_eff"]
     merged["def_eff_diff"] = merged["high_def_eff"] - merged["low_def_eff"]
@@ -1214,6 +1210,8 @@ def _attach_team_feature_diffs(
         merged["elo_momentum_diff"] = merged["low_elo_momentum"] - merged["high_elo_momentum"]
     if {"low_ridge_strength", "high_ridge_strength"}.issubset(merged.columns):
         merged["ridge_strength_diff"] = merged["low_ridge_strength"] - merged["high_ridge_strength"]
+    if {"low_glm_quality", "high_glm_quality"}.issubset(merged.columns):
+        merged["glm_quality_diff"] = merged["low_glm_quality"] - merged["high_glm_quality"]
     if {"low_espn_four_factor_strength", "high_espn_four_factor_strength"}.issubset(merged.columns):
         merged["espn_four_factor_strength_diff"] = (
             merged["low_espn_four_factor_strength"] - merged["high_espn_four_factor_strength"]
@@ -1221,17 +1219,13 @@ def _attach_team_feature_diffs(
     if {"low_espn_efg", "high_espn_efg"}.issubset(merged.columns):
         merged["espn_efg_diff"] = merged["low_espn_efg"] - merged["high_espn_efg"]
     if {"low_espn_tov_rate", "high_espn_tov_rate"}.issubset(merged.columns):
-        merged["espn_tov_rate_diff"] = (
-            merged["high_espn_tov_rate"] - merged["low_espn_tov_rate"]
-        )
+        merged["espn_tov_rate_diff"] = merged["high_espn_tov_rate"] - merged["low_espn_tov_rate"]
     if {"low_espn_orb_pct", "high_espn_orb_pct"}.issubset(merged.columns):
         merged["espn_orb_pct_diff"] = merged["low_espn_orb_pct"] - merged["high_espn_orb_pct"]
     if {"low_espn_ftr", "high_espn_ftr"}.issubset(merged.columns):
         merged["espn_ftr_diff"] = merged["low_espn_ftr"] - merged["high_espn_ftr"]
     if {"low_espn_opp_efg", "high_espn_opp_efg"}.issubset(merged.columns):
-        merged["espn_opp_efg_diff"] = (
-            merged["high_espn_opp_efg"] - merged["low_espn_opp_efg"]
-        )
+        merged["espn_opp_efg_diff"] = merged["high_espn_opp_efg"] - merged["low_espn_opp_efg"]
     if {"low_espn_opp_tov_rate", "high_espn_opp_tov_rate"}.issubset(merged.columns):
         merged["espn_opp_tov_rate_diff"] = (
             merged["low_espn_opp_tov_rate"] - merged["high_espn_opp_tov_rate"]
@@ -1241,9 +1235,7 @@ def _attach_team_feature_diffs(
             merged["high_espn_opp_orb_pct"] - merged["low_espn_opp_orb_pct"]
         )
     if {"low_espn_opp_ftr", "high_espn_opp_ftr"}.issubset(merged.columns):
-        merged["espn_opp_ftr_diff"] = (
-            merged["high_espn_opp_ftr"] - merged["low_espn_opp_ftr"]
-        )
+        merged["espn_opp_ftr_diff"] = merged["high_espn_opp_ftr"] - merged["low_espn_opp_ftr"]
     if {"low_espn_rotation_stability", "high_espn_rotation_stability"}.issubset(merged.columns):
         merged["espn_rotation_stability_diff"] = (
             merged["low_espn_rotation_stability"] - merged["high_espn_rotation_stability"]
@@ -1255,6 +1247,12 @@ def _attach_team_feature_diffs(
     }.issubset(merged.columns):
         merged["massey_rank_diff"] = (
             merged["high_massey_median_rank"] - merged["low_massey_median_rank"]
+        )
+    if {"low_massey_pca1", "high_massey_pca1"}.issubset(merged.columns):
+        merged["massey_pca1_diff"] = merged["low_massey_pca1"] - merged["high_massey_pca1"]
+    if {"low_massey_disagreement", "high_massey_disagreement"}.issubset(merged.columns):
+        merged["massey_disagreement_diff"] = (
+            merged["high_massey_disagreement"] - merged["low_massey_disagreement"]
         )
 
     return merged.sort_values(["Season", "LowTeamID", "HighTeamID"]).reset_index(drop=True)

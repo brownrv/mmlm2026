@@ -22,6 +22,7 @@ from mmlm2026.features.elo import (
     compute_tournament_only_elo_ratings,
 )
 from mmlm2026.features.espn import load_espn_women_four_factor_strength_features
+from mmlm2026.features.phase_b import build_glm_quality_features
 from mmlm2026.features.primary import (
     build_conference_percentile_features,
     build_late5_form_split_features,
@@ -87,8 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-season-momentum",
         action="store_true",
         help=(
-            "Include second-half minus first-half average margin "
-            "differential as an extra feature."
+            "Include second-half minus first-half average margin differential as an extra feature."
         ),
     )
     parser.add_argument(
@@ -110,6 +110,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-conference-rank",
         action="store_true",
         help="Include conference percentile rank differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-glm-quality",
+        action="store_true",
+        help="Include season-level OLS team-quality differential as an extra feature.",
     )
     parser.add_argument(
         "--include-late-bundle",
@@ -262,6 +267,15 @@ def main() -> int:
             diff_name="conf_pct_rank_diff",
         )
         feature_cols.append("conf_pct_rank_diff")
+    if args.include_glm_quality:
+        glm_quality = build_glm_quality_features(context.regular_season)
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            glm_quality,
+            feature_name="glm_quality",
+            diff_name="glm_quality_diff",
+        )
+        feature_cols.append("glm_quality_diff")
     if args.include_late_bundle:
         site_profiles = build_site_performance_features(context.regular_season)
         win_quality = build_win_quality_bin_features(context.regular_season)
@@ -447,6 +461,14 @@ def main() -> int:
             conf_rank[["Season", "TeamID", "conf_pct_rank"]],
             feature_name="conf_pct_rank",
             diff_name="conf_pct_rank_diff",
+        )
+    if args.include_glm_quality:
+        glm_quality = build_glm_quality_features(context.regular_season)
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            glm_quality,
+            feature_name="glm_quality",
+            diff_name="glm_quality_diff",
         )
     if args.include_late_bundle:
         site_profiles = build_site_performance_features(context.regular_season)
@@ -670,9 +692,7 @@ def _score_with_routed_models(
 
 def _season_decay_weights(seasons: pd.Series, *, decay_base: float) -> pd.Series:
     latest = int(seasons.max())
-    weights = seasons.astype(int).map(
-        lambda season: float(decay_base ** (latest - int(season)))
-    )
+    weights = seasons.astype(int).map(lambda season: float(decay_base ** (latest - int(season))))
     return weights.astype(float)
 
 
@@ -684,34 +704,25 @@ def _attach_team_scalar_feature(
     diff_name: str,
     defensive: bool = False,
 ) -> pd.DataFrame:
-    enriched = (
-        frame.merge(
-            team_feature.rename(
-                columns={"TeamID": "LowTeamID", feature_name: f"low_{feature_name}"}
-            ),
-            on=["Season", "LowTeamID"],
-            how="left",
-            validate="many_to_one",
-        )
-        .merge(
-            team_feature.rename(
-                columns={"TeamID": "HighTeamID", feature_name: f"high_{feature_name}"}
-            ),
-            on=["Season", "HighTeamID"],
-            how="left",
-            validate="many_to_one",
-        )
+    enriched = frame.merge(
+        team_feature.rename(columns={"TeamID": "LowTeamID", feature_name: f"low_{feature_name}"}),
+        on=["Season", "LowTeamID"],
+        how="left",
+        validate="many_to_one",
+    ).merge(
+        team_feature.rename(columns={"TeamID": "HighTeamID", feature_name: f"high_{feature_name}"}),
+        on=["Season", "HighTeamID"],
+        how="left",
+        validate="many_to_one",
     )
     if defensive:
-        enriched[diff_name] = (
-            enriched[f"high_{feature_name}"].astype(float)
-            - enriched[f"low_{feature_name}"].astype(float)
-        )
+        enriched[diff_name] = enriched[f"high_{feature_name}"].astype(float) - enriched[
+            f"low_{feature_name}"
+        ].astype(float)
     else:
-        enriched[diff_name] = (
-            enriched[f"low_{feature_name}"].astype(float)
-            - enriched[f"high_{feature_name}"].astype(float)
-        )
+        enriched[diff_name] = enriched[f"low_{feature_name}"].astype(float) - enriched[
+            f"high_{feature_name}"
+        ].astype(float)
     return enriched
 
 
@@ -777,6 +788,8 @@ def _log_mlflow_run(
         tags["depends_on"] += ",feature:late_feat_24_late5_split_v1"
     if args.include_conference_rank:
         tags["depends_on"] += ",feature:late_feat_29_conf_pct_rank_v1"
+    if args.include_glm_quality:
+        tags["depends_on"] += ",feature:mh7_feat_01_glm_quality_v1"
     if args.use_decay_weighting:
         tags["depends_on"] += ",arch:late_arch_dw_01_v1"
     if args.include_late_bundle:
@@ -796,6 +809,7 @@ def _log_mlflow_run(
                 "include_espn_components": str(args.include_espn_components).lower(),
                 "include_late5_form": str(args.include_late5_form).lower(),
                 "include_conference_rank": str(args.include_conference_rank).lower(),
+                "include_glm_quality": str(args.include_glm_quality).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,

@@ -43,9 +43,9 @@ def test_market_audit_summaries_and_compares() -> None:
     assert set(viability["league"]) == {"M", "W"}
 
     comparison = compare_market_to_local_tourney(games, local)
-    men_2024 = comparison.loc[
-        (comparison["league"] == "M") & (comparison["Season"] == 2024)
-    ].iloc[0]
+    men_2024 = comparison.loc[(comparison["league"] == "M") & (comparison["Season"] == 2024)].iloc[
+        0
+    ]
     assert men_2024["compared_games"] == 1
     assert men_2024["market_brier"] == pytest.approx(0.04)
     assert men_2024["local_brier"] == pytest.approx(0.09)

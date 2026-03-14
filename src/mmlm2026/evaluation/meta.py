@@ -104,11 +104,15 @@ def merge_meta_prediction_frames(
         current = frame[["Season", "LowTeamID", "HighTeamID", "outcome", "pred"]].rename(
             columns={"pred": pred_col}
         )
-        merged = current if merged is None else merged.merge(
-            current,
-            on=["Season", "LowTeamID", "HighTeamID", "outcome"],
-            how="inner",
-            validate="one_to_one",
+        merged = (
+            current
+            if merged is None
+            else merged.merge(
+                current,
+                on=["Season", "LowTeamID", "HighTeamID", "outcome"],
+                how="inner",
+                validate="one_to_one",
+            )
         )
     if merged is None:
         raise ValueError("At least one prediction frame is required.")

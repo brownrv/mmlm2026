@@ -29,6 +29,7 @@ from mmlm2026.features.espn import (
     load_espn_men_four_factor_strength_features,
     load_espn_men_rotation_stability_features,
 )
+from mmlm2026.features.phase_b import build_glm_quality_features, build_massey_pca_features
 from mmlm2026.features.primary import (
     build_conference_percentile_features,
     build_late5_form_split_features,
@@ -120,8 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-season-momentum",
         action="store_true",
         help=(
-            "Include second-half minus first-half average margin "
-            "differential as an extra feature."
+            "Include second-half minus first-half average margin differential as an extra feature."
         ),
     )
     parser.add_argument(
@@ -138,6 +138,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-conference-rank",
         action="store_true",
         help="Include conference percentile rank differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-glm-quality",
+        action="store_true",
+        help="Include season-level OLS team-quality differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-massey-pca",
+        action="store_true",
+        help="Include Massey PCA and disagreement differentials as extra features.",
     )
     parser.add_argument(
         "--include-late-bundle",
@@ -178,6 +188,7 @@ def main() -> int:
     slots = pd.read_csv(data_dir / "MNCAATourneySlots.csv")
     conf_tourney = pd.read_csv(data_dir / "MConferenceTourneyGames.csv")
     team_conferences = pd.read_csv(data_dir / "MTeamConferences.csv")
+    massey = pd.read_csv(data_dir / "MMasseyOrdinals.csv")
 
     regular_season = regular_season.loc[regular_season["Season"] >= args.season_floor].copy()
     regular_season_detailed = regular_season_detailed.loc[
@@ -187,9 +198,8 @@ def main() -> int:
     seeds = seeds.loc[seeds["Season"] >= args.season_floor].copy()
     slots = slots.loc[slots["Season"] >= args.season_floor].copy()
     conf_tourney = conf_tourney.loc[conf_tourney["Season"] >= args.season_floor].copy()
-    team_conferences = team_conferences.loc[
-        team_conferences["Season"] >= args.season_floor
-    ].copy()
+    team_conferences = team_conferences.loc[team_conferences["Season"] >= args.season_floor].copy()
+    massey = massey.loc[massey["Season"] >= args.season_floor].copy()
 
     elo_ratings = compute_pre_tourney_elo_ratings(
         regular_season,
@@ -288,6 +298,28 @@ def main() -> int:
         )
         team_features = team_features.merge(
             conf_rank,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_glm_quality:
+        glm_quality = build_glm_quality_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
+        team_features = team_features.merge(
+            glm_quality,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_massey_pca:
+        massey_pca = build_massey_pca_features(
+            massey,
+            ranking_day_cutoff=args.day_cutoff - 1,
+        )
+        team_features = team_features.merge(
+            massey_pca,
             on=["Season", "TeamID"],
             how="left",
             validate="one_to_one",
@@ -419,6 +451,10 @@ def main() -> int:
         feature_cols.extend(["late5_off_diff", "late5_def_diff"])
     if args.include_conference_rank:
         feature_cols.append("conf_pct_rank_diff")
+    if args.include_glm_quality:
+        feature_cols.append("glm_quality_diff")
+    if args.include_massey_pca:
+        feature_cols.extend(["massey_pca1_diff", "massey_disagreement_diff"])
     if args.include_late_bundle:
         feature_cols.extend(
             [
@@ -470,6 +506,10 @@ def main() -> int:
         calibration_feature_cols.extend(["late5_off_diff", "late5_def_diff"])
     if args.include_conference_rank:
         calibration_feature_cols.append("conf_pct_rank_diff")
+    if args.include_glm_quality:
+        calibration_feature_cols.append("glm_quality_diff")
+    if args.include_massey_pca:
+        calibration_feature_cols.extend(["massey_pca1_diff", "massey_disagreement_diff"])
     if args.include_late_bundle:
         calibration_feature_cols.extend(
             [
@@ -709,9 +749,7 @@ def _mirror_margin_training_rows(frame: pd.DataFrame, feature_cols: list[str]) -
 
 def _season_decay_weights(seasons: pd.Series, *, decay_base: float) -> pd.Series:
     latest = int(seasons.max())
-    weights = seasons.astype(int).map(
-        lambda season: float(decay_base ** (latest - int(season)))
-    )
+    weights = seasons.astype(int).map(lambda season: float(decay_base ** (latest - int(season))))
     return weights.astype(float)
 
 
@@ -955,6 +993,8 @@ def _log_mlflow_run(
             )
             + (",feature:late_feat_24_late5_split_v1" if args.include_late5_form else "")
             + (",feature:late_feat_29_conf_pct_rank_v1" if args.include_conference_rank else "")
+            + (",feature:mh7_feat_01_glm_quality_v1" if args.include_glm_quality else "")
+            + (",feature:late_feat_30_massey_pca_v1" if args.include_massey_pca else "")
             + (",feature:late_feat_bundle_24_27_28_29_31_v1" if args.include_late_bundle else "")
             + (",arch:late_arch_dw_01_v1" if args.use_decay_weighting else "")
         ),
@@ -982,6 +1022,8 @@ def _log_mlflow_run(
                 "include_market_strength": str(args.include_market_strength).lower(),
                 "include_late5_form": str(args.include_late5_form).lower(),
                 "include_conference_rank": str(args.include_conference_rank).lower(),
+                "include_glm_quality": str(args.include_glm_quality).lower(),
+                "include_massey_pca": str(args.include_massey_pca).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,

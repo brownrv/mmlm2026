@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge  # type: ignore[import-untyped]
 
@@ -323,6 +324,51 @@ def build_regularized_margin_strength_features(
     return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
 
 
+def build_glm_quality_features(
+    regular_season_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+) -> pd.DataFrame:
+    """Build season-level OLS team-quality coefficients from regular-season point margins."""
+    required = {"Season", "DayNum", "WTeamID", "LTeamID", "WScore", "LScore"}
+    missing = required.difference(regular_season_results.columns)
+    if missing:
+        raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+
+    filtered = regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff].copy()
+    rows: list[dict[str, float | int]] = []
+    for season, season_games in filtered.groupby("Season", sort=True):
+        teams = sorted(
+            {int(team_id) for team_id in season_games["WTeamID"]}
+            | {int(team_id) for team_id in season_games["LTeamID"]}
+        )
+        if not teams:
+            continue
+
+        team_to_idx = {team_id: idx for idx, team_id in enumerate(teams)}
+        design = np.zeros((len(season_games), len(teams)), dtype=float)
+        response = np.zeros(len(season_games), dtype=float)
+
+        for row_idx, (_, game) in enumerate(season_games.iterrows()):
+            design[row_idx, team_to_idx[int(game["WTeamID"])]] = 1.0
+            design[row_idx, team_to_idx[int(game["LTeamID"])]] = -1.0
+            response[row_idx] = float(game["WScore"]) - float(game["LScore"])
+
+        coefficients, *_ = np.linalg.lstsq(design, response, rcond=None)
+        coefficients = coefficients - float(coefficients.mean())
+        season_int = int(cast(int, season))
+        for team_id, coefficient in zip(teams, coefficients, strict=True):
+            rows.append(
+                {
+                    "Season": season_int,
+                    "TeamID": int(team_id),
+                    "glm_quality": float(coefficient),
+                }
+            )
+
+    return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
+
+
 def build_recent_form_features(
     regular_season_results: pd.DataFrame,
     *,
@@ -456,6 +502,63 @@ def build_massey_consensus_features(
         .reset_index(drop=True)
     )
     return aggregated
+
+
+def build_massey_pca_features(
+    massey_ordinals: pd.DataFrame,
+    *,
+    ranking_day_cutoff: int = 133,
+) -> pd.DataFrame:
+    """Build season-level Massey PC1 and cross-system disagreement features."""
+    required = {"Season", "RankingDayNum", "SystemName", "TeamID", "OrdinalRank"}
+    missing = required.difference(massey_ordinals.columns)
+    if missing:
+        raise ValueError(f"Massey ordinals missing required columns: {sorted(missing)}")
+
+    filtered = massey_ordinals.loc[massey_ordinals["RankingDayNum"] <= ranking_day_cutoff].copy()
+    latest_by_system = (
+        filtered.sort_values(["Season", "TeamID", "SystemName", "RankingDayNum"])
+        .groupby(["Season", "TeamID", "SystemName"], as_index=False)
+        .tail(1)
+    )
+    if latest_by_system.empty:
+        return pd.DataFrame(columns=["Season", "TeamID", "massey_pca1", "massey_disagreement"])
+
+    rows: list[pd.DataFrame] = []
+    for season, season_frame in latest_by_system.groupby("Season", sort=True):
+        pivoted = season_frame.pivot(
+            index="TeamID",
+            columns="SystemName",
+            values="OrdinalRank",
+        ).sort_index()
+        disagreement = pivoted.std(axis=1, ddof=0).fillna(0.0).astype(float)
+        filled = pivoted.apply(lambda col: col.fillna(col.mean()), axis=0)
+        matrix = filled.to_numpy(dtype=float)
+        centered = matrix - matrix.mean(axis=0, keepdims=True)
+        if centered.shape[0] < 2 or centered.shape[1] == 0 or np.allclose(centered, 0.0):
+            pc1_scores = np.zeros(centered.shape[0], dtype=float)
+        else:
+            _, _, vt = np.linalg.svd(centered, full_matrices=False)
+            loadings = vt[0]
+            pc1_scores = centered @ loadings
+            avg_rank = filled.mean(axis=1).to_numpy(dtype=float)
+            corr = np.corrcoef(pc1_scores, avg_rank)[0, 1]
+            if np.isfinite(corr) and corr > 0:
+                pc1_scores = -pc1_scores
+        rows.append(
+            pd.DataFrame(
+                {
+                    "Season": int(season),
+                    "TeamID": pivoted.index.astype(int),
+                    "massey_pca1": pc1_scores.astype(float),
+                    "massey_disagreement": disagreement.to_numpy(dtype=float),
+                }
+            )
+        )
+
+    return (
+        pd.concat(rows, ignore_index=True).sort_values(["Season", "TeamID"]).reset_index(drop=True)
+    )
 
 
 def build_schedule_adjusted_net_eff_features(

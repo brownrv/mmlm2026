@@ -445,9 +445,7 @@ def build_elo_seed_submission_features(
     high_expected_elo = 1750.0 - (enriched["high_seed"].astype(float) - 1.0) * 25.0
     enriched["low_seed_elo_gap"] = enriched["low_elo"] - low_expected_elo
     enriched["high_seed_elo_gap"] = enriched["high_elo"] - high_expected_elo
-    enriched["seed_elo_gap_diff"] = (
-        enriched["low_seed_elo_gap"] - enriched["high_seed_elo_gap"]
-    )
+    enriched["seed_elo_gap_diff"] = enriched["low_seed_elo_gap"] - enriched["high_seed_elo_gap"]
     rounds = _rounds_from_seed_pairs(
         enriched,
         low_seed_col="low_seed_label",
@@ -493,19 +491,16 @@ def attach_secondary_elo_features(
     low_col = f"low_{prefix}"
     high_col = f"high_{prefix}"
     diff_col = f"{prefix}_diff"
-    enriched = (
-        frame.merge(
-            elo_ratings.rename(columns={"TeamID": "LowTeamID", "elo": low_col}),
-            on=["Season", "LowTeamID"],
-            how="left",
-            validate="many_to_one",
-        )
-        .merge(
-            elo_ratings.rename(columns={"TeamID": "HighTeamID", "elo": high_col}),
-            on=["Season", "HighTeamID"],
-            how="left",
-            validate="many_to_one",
-        )
+    enriched = frame.merge(
+        elo_ratings.rename(columns={"TeamID": "LowTeamID", "elo": low_col}),
+        on=["Season", "LowTeamID"],
+        how="left",
+        validate="many_to_one",
+    ).merge(
+        elo_ratings.rename(columns={"TeamID": "HighTeamID", "elo": high_col}),
+        on=["Season", "HighTeamID"],
+        how="left",
+        validate="many_to_one",
     )
     enriched[diff_col] = enriched[low_col] - enriched[high_col]
     return enriched

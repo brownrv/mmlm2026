@@ -9,9 +9,11 @@ from mmlm2026.features.phase_b import (
     build_close_game_win_rate_features,
     build_conf_tourney_win_rate_features,
     build_free_throw_rate_features,
+    build_glm_quality_features,
     build_iterative_adjusted_efficiency_features,
     build_margin_per_100_features,
     build_massey_consensus_features,
+    build_massey_pca_features,
     build_recent_form_features,
     build_regularized_margin_strength_features,
     build_schedule_adjusted_net_eff_features,
@@ -127,6 +129,47 @@ def test_build_massey_consensus_features_uses_latest_rank_per_system() -> None:
 
     assert features["massey_system_count"].iloc[0] == 2
     assert features["massey_median_rank"].iloc[0] == pytest.approx((10 + 25) / 2)
+
+
+def test_build_massey_pca_features_returns_consensus_and_disagreement() -> None:
+    massey = pd.DataFrame(
+        {
+            "Season": [2025] * 6,
+            "RankingDayNum": [120] * 6,
+            "SystemName": ["SYS1", "SYS2", "SYS3", "SYS1", "SYS2", "SYS3"],
+            "TeamID": [10, 10, 10, 20, 20, 20],
+            "OrdinalRank": [5, 8, 6, 40, 42, 38],
+        }
+    )
+
+    features = build_massey_pca_features(massey, ranking_day_cutoff=133)
+
+    assert {"massey_pca1", "massey_disagreement"}.issubset(features.columns)
+    team10 = features.loc[features["TeamID"] == 10].iloc[0]
+    team20 = features.loc[features["TeamID"] == 20].iloc[0]
+    assert team10["massey_pca1"] > team20["massey_pca1"]
+    assert team10["massey_disagreement"] >= 0.0
+
+
+def test_build_glm_quality_features_ranks_stronger_team_higher() -> None:
+    regular_season = pd.DataFrame(
+        {
+            "Season": [2025, 2025, 2025],
+            "DayNum": [10, 20, 30],
+            "WTeamID": [10, 10, 20],
+            "LTeamID": [20, 30, 30],
+            "WScore": [80, 78, 70],
+            "LScore": [70, 60, 68],
+        }
+    )
+
+    features = build_glm_quality_features(regular_season, day_cutoff=134)
+
+    team10 = features.loc[features["TeamID"] == 10, "glm_quality"].iloc[0]
+    team20 = features.loc[features["TeamID"] == 20, "glm_quality"].iloc[0]
+    team30 = features.loc[features["TeamID"] == 30, "glm_quality"].iloc[0]
+    assert team10 > team20 > team30
+    assert features["glm_quality"].mean() == pytest.approx(0.0)
 
 
 def test_build_schedule_adjusted_net_eff_features_combines_net_eff_and_sos() -> None:

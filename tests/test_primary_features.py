@@ -281,6 +281,9 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "conf_tourney_win_pct": [1.0, 0.0],
             "massey_system_count": [1, 1],
             "massey_median_rank": [10.0, 30.0],
+            "massey_pca1": [1.5, -0.5],
+            "massey_disagreement": [2.0, 5.0],
+            "glm_quality": [4.0, -3.0],
         }
     )
 
@@ -307,6 +310,9 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
     assert feature_table["def_eff_diff"].iloc[0] == pytest.approx(6.0)
     assert feature_table["pythag_diff"].iloc[0] == pytest.approx(0.19)
     assert feature_table["massey_rank_diff"].iloc[0] == pytest.approx(20.0)
+    assert feature_table["massey_pca1_diff"].iloc[0] == pytest.approx(2.0)
+    assert feature_table["massey_disagreement_diff"].iloc[0] == pytest.approx(3.0)
+    assert feature_table["glm_quality_diff"].iloc[0] == pytest.approx(7.0)
     assert feature_table["adj_qg_diff"].iloc[0] == pytest.approx(14.0)
     assert feature_table["tourney_elo_diff"].iloc[0] == pytest.approx(60.0)
     assert feature_table["elo_momentum_diff"].iloc[0] == pytest.approx(55.0)

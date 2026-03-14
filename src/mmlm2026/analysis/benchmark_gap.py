@@ -28,9 +28,7 @@ def load_reference_predictions(reference_root: Path) -> pd.DataFrame:
             )
             frame["league"] = league
             frame["Season"] = season
-            frame["benchmark_round_group"] = frame["benchmark_round"].map(
-                _round_group_from_round
-            )
+            frame["benchmark_round_group"] = frame["benchmark_round"].map(_round_group_from_round)
             rows.append(
                 frame[
                     [
@@ -83,9 +81,7 @@ def build_benchmark_gap_table(local: pd.DataFrame, reference: pd.DataFrame) -> p
     merged["abs_pred_delta"] = merged["pred_delta"].abs()
     merged["play_prob_delta"] = merged["play_prob"] - merged["benchmark_play_prob"]
     merged["abs_play_prob_delta"] = merged["play_prob_delta"].abs()
-    merged["benchmark_brier_component"] = (
-        merged["benchmark_pred"] - merged["outcome"]
-    ).pow(2)
+    merged["benchmark_brier_component"] = (merged["benchmark_pred"] - merged["outcome"]).pow(2)
     merged.loc[~merged["was_played"], "benchmark_brier_component"] = pd.NA
     merged["brier_gap"] = merged["brier_component"] - merged["benchmark_brier_component"]
     return merged

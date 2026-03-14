@@ -29,6 +29,94 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-14 — LATE-VAL-07 v1: ESPN feature stability audit
+
+Status: Completed
+
+Hypothesis:
+- ESPN-derived team features are stable enough by league and season to support deadline-safe late challengers without hidden coverage gaps.
+
+Dependencies:
+- feature:late_feat_18_espn_four_factor_v1
+- feature:late_feat_19_espn_rotation_v1
+- validate:late_val_07_v1
+
+MLflow:
+- Run name: N/A
+- Run ID: N/A
+
+Result:
+- Added a season-by-season ESPN audit exporter and artifacts under `data/interim/espn_audit/`.
+- Men ESPN four-factor and rotation features are operationally stable after 2004: overall coverage is `0.944`, median season coverage is `0.988`, and every populated feature column is fully non-null on matched rows.
+- Women ESPN four-factor is usable historically from roughly `2017–2025`, but early seasons are weak (`2010–2013` zero coverage, `2014–2016` partial), and current `2026` coverage is still `0.0` in the present raw snapshot.
+- Conclusion: ESPN-based men challengers are deadline-safe; women ESPN features are acceptable for historical challenger work but remain live-run blocked until the `2026` ESPN ingest is refreshed.
+
+Re-test if:
+- The ESPN parsing or team-spelling join policy changes.
+- A new `2026` ESPN boxscore refresh lands and women coverage should be re-audited for live deployment.
+
+Related:
+- [scripts/export_espn_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/export_espn_audit.py)
+- [espn_audit.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/analysis/espn_audit.py)
+
+---
+## 2026-03-14 — MH7-FEAT-01 v1: GLM team quality coefficients
+
+Status: Completed
+
+Hypothesis:
+- Per-season OLS team-quality coefficients from regular-season point margins may add orthogonal strength signal beyond the frozen Elo and ESPN-driven leader families.
+
+Dependencies:
+- feature:mh7_feat_01_glm_quality_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_feat_29_v1
+
+MLflow:
+- Run name: `mh7-feat-01-men-glm-quality`
+- Run name: `mh7-feat-01-women-glm-quality`
+
+Result:
+- Men scored `flat_brier = 0.198515` and `log_loss = 0.585169`, clearly worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.138405` and `log_loss = 0.416720`, far worse than the frozen women leader `0.130381`.
+- This branch does not advance in either league; the simple season-level GLM quality coefficients do not combine cleanly with the current frozen leader paths.
+
+Re-test if:
+- A future branch uses a richer modeh7-style feature stack or a different downstream model family where GLM quality might interact more constructively.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [src/mmlm2026/features/phase_b.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/phase_b.py)
+
+---
+## 2026-03-14 — LATE-FEAT-30 v1: men Massey PCA and disagreement
+
+Status: Completed
+
+Hypothesis:
+- Season-level Massey consensus structure, expressed as a principal component plus cross-system disagreement, may add residual men team-quality signal beyond the frozen reference margin feature set.
+
+Dependencies:
+- feature:late_feat_30_massey_pca_v1
+- model:men_reference_margin_generalization_v1
+
+MLflow:
+- Run name: `late-feat-30-men-massey-pca`
+
+Result:
+- The men challenger scored `flat_brier = 0.198212` and `log_loss = 0.580902` on the 2023–2024 held-out window.
+- Per-season flat Brier was `0.207135` in 2023 and `0.189290` in 2024.
+- This is clearly worse than the frozen men leader `0.195566`, so `LATE-FEAT-30` does not advance.
+
+Re-test if:
+- A future men path uses a materially different rating backbone or a richer Massey-derived representation than simple PCA/disagreement.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [src/mmlm2026/features/phase_b.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/phase_b.py)
+
+---
 ## 2026-03-13 — LATE-FEAT-24 + LATE-FEAT-29 v1: women late-5 plus conference rank
 
 Status: Completed
