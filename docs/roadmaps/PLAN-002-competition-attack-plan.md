@@ -141,13 +141,46 @@ The repository now contains several non-Kaggle datasets that are explicitly in s
 | Reference all-matchups benchmark table | `data/reference/` | Men 2003–2025, Women 2010–2025 | Compare local models against `adj_quality_gap_v10`, inspect bucket/round-specific misses, and build challenger-targeted diagnostics | Contains model-derived features and probabilities from the benchmark model; use for comparison, error analysis, and feature inspiration, not as a leakage-prone direct training target |
 | BetExplorer odds | `data/processed/betexplorer/` | Men and women, regular season and tournament, opening/closing odds | Market-implied priors, calibration anchors, and late-round matchup strength features | Coverage gaps, team-name mapping quality, and market data availability may differ by league and season |
 | ESPN parsed game and player data | `data/processed/espn/` | Men and women historical seasons in parquet | Richer box-score and player-level strength signals, lineup-agnostic form, possession decomposition, and situational features | Join complexity, schema drift, and the risk of over-building low-signal features under deadline |
-| External tournament-progression forecasts | `data/processed/tourney_forecasts/` (populate post-Selection Sunday if secured) | Men and women, target season only; **preferred source: COOPER (Silver Bulletin)** — injury-adjusted, bracket-simulates 'hot' (ratings update during simulation), internal ratings blended 5/8 COOPER + 3/8 KenPom (M) / Her Hoop Stats (W); fallback sources: ESPN bracket forecasts, T-Rank, teamrankings.com; columns `rd1_win`–`rd6_win` per team; 538 no longer publishes as of 2024 | `LATE-EXT-04` challenger: blend as direct H2H prior (via `goto_conversion`), derive conditional-strength features (`rd_r_win / rd_{r-1}_win`), or use as calibration anchor | Data availability not guaranteed for 2026; use only forecasts from the earliest available pre-tournament date (before Selection Sunday; no updating with realized results); team-name mapping to Kaggle TeamID required; women's COOPER launched March 10 — verify full M+W team coverage before Selection Sunday |
+| External tournament-progression forecasts | `data/raw/cooper_ratings/` (raw COOPER downloads) with normalized outputs to `data/processed/tourney_forecasts/` | Men and women, historical plus target season; current local files include 2026 forecast snapshots and historical COOPER ratings | `LATE-EXT-04` challenger: blend as direct H2H prior (via `goto_conversion`), derive conditional-strength features (`rd_r_win / rd_{r-1}_win`), or use as calibration anchor | Raw files still need normalization, team-name mapping, and earliest-snapshot policy enforcement before they are safe model inputs |
 
 **Planning stance for these datasets:**
 - `data/reference/` is primarily an analysis and benchmark-comparison asset. It is best used to identify where local models differ from the benchmark on the same matchup universe and to prioritize challenger hypotheses.
 - `data/processed/betexplorer/` is the highest-upside late challenger dataset if coverage is clean, because market odds can act as a strong compressed prior for strength and calibration.
 - `data/processed/espn/` is the best source for improving internal strength ratings and situational features, especially if the objective is a better latent team-quality model rather than a broader final classifier.
-- `data/processed/tourney_forecasts/` is **conditional on data availability confirmed post-Selection Sunday (March 15)**. If a clean source with full M+W team coverage is secured, this is the highest-leverage remaining external signal because it is bracket-aware and orthogonal to all internal Elo/GBT features. **Preferred source: COOPER (Silver Bulletin)** — injury-adjusted bracket simulations that run 'hot' (team ratings update during simulation based on simulated game results, giving a more realistic posterior for later rounds); blends COOPER 5/8 + KenPom/Her Hoop Stats 3/8. If COOPER is not accessible, fall back to ESPN, T-Rank, or teamrankings.com. If data cannot be secured by 2026-03-16, skip LATE-EXT-04 entirely and proceed with the frozen leaders.
+- `data/raw/cooper_ratings/` is now the active local source for `LATE-EXT-04`. The current repo contains:
+  - `cooper_ratings_men_2026.csv`
+  - `cooper_ratings_men_detail_2026.csv`
+  - `cooper_ratings_men_detail_alternate_2026.csv`
+  - `cooper_ratings_men_historical.csv`
+  - `cooper_ratings_women_2026.csv`
+  - `cooper_ratings_women_detail_2026.csv`
+  - `cooper_ratings_women_detail_alternate_2026.csv`
+  - `cooper_ratings_women_historical.csv`
+- Supporting methodology notes are captured locally in:
+  - `docs/cooper_ratings_men.docx`
+  - `docs/cooper_ratings_women.docx`
+- This means `LATE-EXT-04` is no longer blocked on source discovery. It is now blocked only on clean normalization into `data/processed/tourney_forecasts/`, team-name mapping to Kaggle TeamIDs, and enforcing the earliest pre-tournament snapshot policy.
+
+**Planned use of COOPER raw files:**
+- `*_historical.csv` is the backtesting source for historical challenger evaluation.
+- `*_2026.csv` is the base 2026 pre-tournament progression snapshot for live experimentation.
+- `*_detail_2026.csv` and `*_detail_alternate_2026.csv` are supporting detail tables that can be used to:
+  - verify round-progression field definitions
+  - audit differences between primary and alternate exports
+  - derive richer conditional-strength features if needed
+- Normalized processed outputs should land in `data/processed/tourney_forecasts/` with one row per `Season-TeamID` and canonical columns such as:
+  - `rd1_win`, `rd2_win`, `rd3_win`, `rd4_win`, `rd5_win`, `rd6_win`
+  - `forecast_source`
+  - `forecast_snapshot_date`
+  - `forecast_variant`
+
+**LATE-EXT-04 execution order with COOPER now available:**
+1. Normalize raw COOPER files into `data/processed/tourney_forecasts/`.
+2. Map all teams through `data/TeamSpellings.csv`; document unresolved names explicitly.
+3. Verify that only the earliest pre-tournament 2026 snapshot is used.
+4. Attempt sub-approach A first: direct H2H blend via `goto_conversion`.
+5. If A is neutral or loses, attempt sub-approach B: conditional-strength features (`rd_r_win / rd_{r-1}_win`).
+6. Attempt sub-approach C only if A/B show signal: calibration anchor / shrinkage prior.
 
 ### 1.3.2 Revised Detailed Data Refresh Gate
 
@@ -537,7 +570,7 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 | 6 | LATE-EXT-01 | Men external benchmark-guided challenger | M | Medium-High | Medium | `data/reference/` | Use benchmark all-pairs outputs and features to identify where the local men model still lags and target those cells |
 | 7 | LATE-EXT-02 | Women external benchmark-guided challenger | W | Medium | Medium | `data/reference/` | Use benchmark comparison to isolate round/bucket cells where women still trail the reference |
 | 8 | LATE-EXT-03 | ESPN-derived advanced situational features | M+W | Medium-High | High | `data/processed/espn/` | Richer possessions, four factors, player/game context, and situational form can improve latent rating quality |
-| 9 | LATE-EXT-04 | External tournament-progression forecast challenger | M+W | Very High (if data secured) | Medium | `data/processed/tourney_forecasts/` | Bracket-aware pre-tournament round-progression probabilities (ESPN, T-Rank, KenPom, or equivalent) are orthogonal to all internal Elo/GBT signals; three sub-approaches: (A) direct H2H blend via `goto_conversion`, (B) conditional-strength features (`rd_r_win / rd_{r-1}_win`), (C) calibration anchor; **conditional on data availability confirmed post-Selection Sunday — skip entirely if not secured by 2026-03-16** |
+| 9 | LATE-EXT-04 | External tournament-progression forecast challenger | M+W | Very High | Medium | `data/raw/cooper_ratings/` → normalize to `data/processed/tourney_forecasts/` | COOPER forecast files are now present locally for men and women (historical and 2026). Bracket-aware pre-tournament round-progression probabilities are orthogonal to all internal Elo/GBT signals; three sub-approaches: (A) direct H2H blend via `goto_conversion`, (B) conditional-strength features (`rd_r_win / rd_{r-1}_win`), (C) calibration anchor. Remaining prerequisite is clean normalization and TeamID mapping, not source discovery. |
 
 #### Tier 3 — Representation-learning challengers
 
@@ -580,13 +613,13 @@ All challengers in this tier use Kaggle competition data only (no external datas
 | `data/reference/` | `LATE-EXT-01`, `LATE-EXT-02`, routed-model diagnostics, benchmark-cell analysis | Compare local frozen predictions vs benchmark probabilities on the same all-pairs universe, then prioritize the largest recurring men/women round-bucket gaps. Promotion decisions still depend only on played-game held-out flat Brier. |
 | `data/processed/betexplorer/` | `LATE-MKT-01`, later-stage calibration challengers, odds-implied strength priors | Convert opening/closing odds to implied win probabilities and test them first as a simple prior/blend ingredient before building broader market-feature bundles |
 | `data/processed/espn/` | `LATE-RATE-01`, `LATE-RATE-02`, `LATE-EXT-03`, embedding challengers | Build better team-level possessions, four factors, and player-agnostic form summaries rather than immediately training a large model directly on event-level data |
-| `data/processed/tourney_forecasts/` | `LATE-EXT-04` (sub-approach A first, then B and C) | Confirm data coverage for all tournament teams M+W; map team names to Kaggle TeamIDs via `data/TeamSpellings.csv`; use only forecasts from the earliest available pre-tournament date (before Selection Sunday); attempt direct `goto_conversion` H2H blend before building conditional-strength feature pipeline |
+| `data/raw/cooper_ratings/` → `data/processed/tourney_forecasts/` | `LATE-EXT-04` (sub-approach A first, then B and C) | Normalize the local COOPER raw files first, confirm coverage for all tournament teams M+W, map team names to Kaggle TeamIDs via `data/TeamSpellings.csv`, enforce the earliest pre-tournament snapshot rule, then attempt direct `goto_conversion` H2H blend before building conditional-strength feature pipeline |
 
 #### Remaining execution order from the current state
 
 The original late-challenger queue above remains useful as a historical prioritization record, but many of the early items are now complete. The live order below is the operational queue from the current freeze state.
 
-1. `LATE-EXT-04` — tournament-progression forecast challenger **if and only if** a clean 2026 data source is confirmed post-Selection Sunday; attempt sub-approach A (direct blend via `goto_conversion`) first before building conditional-strength features
+1. `LATE-EXT-04` — tournament-progression forecast challenger using the local COOPER raw files; normalize them first, then attempt sub-approach A (direct blend via `goto_conversion`) before building conditional-strength features
 2. `LATE-ARCH-CB-01` — CatBoost base learner (only if diversity audit shows high OOF correlation among current ensemble members)
 3. `COOPER-ARCH-02` — impact-factor weighted Elo / GLM fitting (only because `COOPER-ARCH-01 + COOPER-ARCH-04` already showed real women-side signal)
 4. `LATE-EMB-01` / `LATE-EMB-02` — team embeddings only if the cheaper remaining model-family challengers stall

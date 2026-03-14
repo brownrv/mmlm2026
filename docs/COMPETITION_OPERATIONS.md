@@ -50,6 +50,15 @@ Always confirm dates on the Kaggle competition page before final submissions.
   6. Record operational outcome in `docs/experiments/experiment-log.md` if behavior changes materially
 - When the official Selection Sunday release lands, prefer the revised `2021-2026` detailed files if they match the supplemental correction set already audited locally; if they differ materially, reopen the targeted refresh gate before freezing the final live candidate.
 
+## External Challenger Assets
+
+- COOPER forecast source files are now present locally under `data/raw/cooper_ratings/`.
+- Supporting methodology notes are stored in:
+  - `docs/cooper_ratings_men.docx`
+  - `docs/cooper_ratings_women.docx`
+- These files are challenger assets for `LATE-EXT-04`, not current frozen-production dependencies.
+- Before any COOPER-based challenger is run, normalize the raw files into `data/processed/tourney_forecasts/`, map names through `data/TeamSpellings.csv`, and enforce use of the earliest pre-tournament snapshot only.
+
 ## Live Commands
 
 ### Pre-Selection Sunday

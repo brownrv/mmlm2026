@@ -3,6 +3,34 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — COOPER forecast source staged locally for LATE-EXT-04
+
+Status: Ready for normalization
+
+Hypothesis:
+- Local COOPER forecast files for men and women provide the highest-upside remaining external challenger source because they encode bracket-aware pre-tournament progression probabilities orthogonal to the current Elo- and feature-based models.
+
+Dependencies:
+- data:cooper_ratings_raw_v1
+- plan:late_ext_04_v1
+
+Result:
+- Local source documents were added:
+  - `docs/cooper_ratings_men.docx`
+  - `docs/cooper_ratings_women.docx`
+- Raw COOPER CSV files are now present under `data/raw/cooper_ratings/` for both leagues, including 2026 snapshots and historical files.
+- `LATE-EXT-04` is now unblocked from a source-availability standpoint.
+- Next required step is normalization into `data/processed/tourney_forecasts/` with TeamID mapping and earliest-snapshot policy enforcement before any model run.
+
+Re-test if:
+- A newer pre-tournament COOPER snapshot is added and the earliest-available snapshot policy changes.
+- Historical COOPER files are revised or replaced.
+
+Related:
+- [PLAN-002-competition-attack-plan.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/roadmaps/PLAN-002-competition-attack-plan.md)
+- [COMPETITION_OPERATIONS.md](/c:/Users/brown/Documents/GitHub/mmlm2026/docs/COMPETITION_OPERATIONS.md)
+
+---
 ## 2026-03-14 — Refreshed frozen historical diagnostics and operations readiness
 
 Status: Completed
