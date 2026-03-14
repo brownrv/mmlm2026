@@ -130,6 +130,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include regular-season BetExplorer market-implied strength differential.",
     )
     parser.add_argument(
+        "--include-late5-form",
+        action="store_true",
+        help="Include late-5 offense/defense split differentials as extra features.",
+    )
+    parser.add_argument(
+        "--include-conference-rank",
+        action="store_true",
+        help="Include conference percentile rank differential as an extra feature.",
+    )
+    parser.add_argument(
         "--include-late-bundle",
         action="store_true",
         help="Include the bundled late challenger feature set (24/27/28/29/31).",
@@ -255,20 +265,19 @@ def main() -> int:
             how="left",
             validate="one_to_one",
         )
-    if args.include_late_bundle:
+    if args.include_late5_form or args.include_late_bundle:
         late5 = build_late5_form_split_features(
             regular_season_detailed,
             day_floor=115,
             day_cutoff=args.day_cutoff,
         )
-        site_profiles = build_site_performance_features(
-            regular_season,
-            day_cutoff=args.day_cutoff,
+        team_features = team_features.merge(
+            late5,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
         )
-        win_quality = build_win_quality_bin_features(
-            regular_season,
-            day_cutoff=args.day_cutoff,
-        )
+    if args.include_conference_rank or args.include_late_bundle:
         summary_strength = build_team_season_summary(regular_season, day_cutoff=args.day_cutoff)[
             ["Season", "TeamID", "avg_margin"]
         ]
@@ -277,17 +286,30 @@ def main() -> int:
             team_conferences,
             strength_col="avg_margin",
         )
+        team_features = team_features.merge(
+            conf_rank,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_late_bundle:
+        site_profiles = build_site_performance_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
+        win_quality = build_win_quality_bin_features(
+            regular_season,
+            day_cutoff=args.day_cutoff,
+        )
         pedigree = build_program_pedigree_features(seeds, results)
         team_features = (
-            team_features.merge(late5, on=["Season", "TeamID"], how="left", validate="one_to_one")
-            .merge(
+            team_features.merge(
                 site_profiles,
                 on=["Season", "TeamID"],
                 how="left",
                 validate="one_to_one",
             )
             .merge(win_quality, on=["Season", "TeamID"], how="left", validate="one_to_one")
-            .merge(conf_rank, on=["Season", "TeamID"], how="left", validate="one_to_one")
             .merge(pedigree, on=["Season", "TeamID"], how="left", validate="one_to_one")
         )
     if args.include_espn_four_factor:
@@ -393,16 +415,17 @@ def main() -> int:
         feature_cols.append("season_momentum_diff")
     if args.include_market_strength:
         feature_cols.append("market_implied_strength_diff")
+    if args.include_late5_form:
+        feature_cols.extend(["late5_off_diff", "late5_def_diff"])
+    if args.include_conference_rank:
+        feature_cols.append("conf_pct_rank_diff")
     if args.include_late_bundle:
         feature_cols.extend(
             [
-                "late5_off_diff",
-                "late5_def_diff",
                 "road_win_pct_diff",
                 "neutral_net_eff_diff",
                 "close_win_pct_5_diff",
                 "blowout_win_pct_diff",
-                "conf_pct_rank_diff",
                 "pedigree_score_diff",
             ]
         )
@@ -443,16 +466,17 @@ def main() -> int:
         calibration_feature_cols.append("season_momentum_diff")
     if args.include_market_strength:
         calibration_feature_cols.append("market_implied_strength_diff")
+    if args.include_late5_form:
+        calibration_feature_cols.extend(["late5_off_diff", "late5_def_diff"])
+    if args.include_conference_rank:
+        calibration_feature_cols.append("conf_pct_rank_diff")
     if args.include_late_bundle:
         calibration_feature_cols.extend(
             [
-                "late5_off_diff",
-                "late5_def_diff",
                 "road_win_pct_diff",
                 "neutral_net_eff_diff",
                 "close_win_pct_5_diff",
                 "blowout_win_pct_diff",
-                "conf_pct_rank_diff",
                 "pedigree_score_diff",
             ]
         )
@@ -929,6 +953,8 @@ def _log_mlflow_run(
                 if args.include_market_strength
                 else ""
             )
+            + (",feature:late_feat_24_late5_split_v1" if args.include_late5_form else "")
+            + (",feature:late_feat_29_conf_pct_rank_v1" if args.include_conference_rank else "")
             + (",feature:late_feat_bundle_24_27_28_29_31_v1" if args.include_late_bundle else "")
             + (",arch:late_arch_dw_01_v1" if args.use_decay_weighting else "")
         ),
@@ -954,6 +980,8 @@ def _log_mlflow_run(
                 "include_seed_elo_gap": str(args.include_seed_elo_gap).lower(),
                 "include_season_momentum": str(args.include_season_momentum).lower(),
                 "include_market_strength": str(args.include_market_strength).lower(),
+                "include_late5_form": str(args.include_late5_form).lower(),
+                "include_conference_rank": str(args.include_conference_rank).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,

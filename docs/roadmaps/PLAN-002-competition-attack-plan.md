@@ -157,6 +157,8 @@ Features must be registered before fitting. For each feature, record:
 | Market-implied probability / spread prior | + stronger market favorite wins | Medium | Late-challenger only; requires strict pregame timing, clean team mapping, and market-coverage audit |
 | ESPN-derived four-factor / possession composites | + stronger efficiency profile wins | Medium | Late-challenger only; must be season-stable and aggregated without future leakage |
 | Player/rotation continuity proxies | Interaction | Medium | Late-challenger only; useful only if historical coverage and joins are stable |
+| GLM team quality coefficients (Bradley-Terry OLS) | + higher quality coefficient wins | None | `glm_quality_diff = α_LowTeamID - α_HighTeamID`; OLS fit on regular-season point diffs, independently per season; see MH7-FEAT-01 in §9.2 for full design matrix spec; requires detailed results |
+| Opponent raw box-score averages | − higher opponent-score-allowed loses; varies by stat | None | `low_avg_opp_{stat}` / `high_avg_opp_{stat}` / `avg_opp_{stat}_diff` for stat ∈ {Score, FGA, Blk, PF, TO, Stl}; each is the mean stat recorded by opponents *against* that team per regular-season game (OT-normalized); simpler defensive quality proxy complementary to adjusted efficiency; see MH7-FEAT-02 in §9.2 |
 
 ---
 
@@ -271,6 +273,7 @@ Phase B — Enhanced Strength
   B3. Recent form (last 10 games W%)
   B4. Massey ordinal consensus (men only; median rank across systems)
   B5. SOS-adjusted net efficiency (season-normalized net_eff + sos)
+  B6. GLM team quality coefficients (OLS on regular-season point diffs; team-pair indicator design matrix; fit per season; see MH7-FEAT-01)
 
 Phase C — Matchup Features
   C1. Elo difference (per matchup pair)
@@ -317,6 +320,14 @@ low_sos: float
 high_sos: float
 low_massey_rank: float (nullable, M only)
 high_massey_rank: float (nullable, M only)
+low_glm_quality: float (nullable; optional late-challenger column; requires detailed results; see MH7-FEAT-01)
+high_glm_quality: float (nullable; optional late-challenger column; requires detailed results; see MH7-FEAT-01)
+glm_quality_diff: float (nullable; optional late-challenger column)
+# MH7-FEAT-02 adds 18 optional late-challenger columns following the same Low/High/diff pattern:
+# low_avg_opp_{stat}, high_avg_opp_{stat}, avg_opp_{stat}_diff for stat in {Score, FGA, Blk, PF, TO, Stl}
+# These columns are null below each league's training floor (men pre-2010, women pre-2010).
+# Optional late-challenger columns are omitted from the base feature table until the
+# corresponding challenger is promoted via §4.5 gate criteria.
 round_prior: float
 round_group: str nullable  ("R1" for Round of 64, "R2+" for Round of 32 through Championship; derivation below)
 outcome: int (1 if LowTeam won, 0 otherwise; null for submission rows)
@@ -328,6 +339,7 @@ outcome: int (1 if LowTeam won, 0 otherwise; null for submission rows)
 - Features derived from `data/interim/` joins, not directly from raw
 - Every feature file must have a corresponding data manifest entry
 - Features that are null for women must be handled explicitly (not imputed with men's values)
+- **Overtime normalization:** When aggregating game-level box-score counting stats (Score, FGA, OR, FTM, FTA, DR, Blk, PF, TO, Stl) across games, divide each game's totals by `adjot = max(1, 1 + NumOT / 5)` before averaging. This prevents teams with many overtime games from appearing artificially stronger in raw counting-stat aggregates. Do not apply to efficiency-derived features already normalized by possessions (off_eff, def_eff).
 
 ### 3.4 `round_group` Derivation
 
@@ -387,7 +399,7 @@ See `docs/decisions/0004-men-women-tournament-modeling-strategy.md` for full rat
 - tuned Elo with season carryover, MOV weighting, and separate regular/tourney weights
 - men-specific margin regression, probability conversion, and dynamic temperature scaling
 
-**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-RATE-02 v1` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
+**Planning stance:** every `adj_quality_gap_v10` component must be added as a named challenger experiment and compared against the current frozen leaders (generalization-tuned reference-style margin model for men, `LATE-FEAT-29 v1` for women). Create a new plan only if this grows into a full standalone replication effort with its own gates and timeline.
 
 ### 4.4 Round-Group Modeling Strategy
 
@@ -421,10 +433,10 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 - Men: generalization-tuned reference-style margin model
   - MLflow run: `337d3b992b884dbb800c078561d37622`
   - 2023–2024 flat Brier: `0.195566`
-- Women: `LATE-RATE-02 v1` routed women + ESPN four-factor model
-  - MLflow run name: `late-rate-02-women-espn-four-factor`
-  - 2023–2024 flat Brier: `0.130427`
-  - 2025 sanity-check run name: `val-01-2025-holdout-women-late-rate-02`
+- Women: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
+  - MLflow run name: `late-feat-29-women-conf-rank`
+  - 2023–2024 flat Brier: `0.130381`
+  - 2025 sanity-check run name: `val-01-2025-holdout-women-late-feat-29`
 
 #### Tier 1 — Highest-value late challengers
 
@@ -556,6 +568,25 @@ Manual review of selected feature set against leakage checklist before any submi
 **Fallback:** Platt scaling (logistic sigmoid fit on raw model outputs)
 **Do not calibrate on training data** — always use out-of-fold predictions
 
+**Regression-target models (margin / point-differential output):** When the base model outputs a continuous margin or score-differential prediction rather than a probability, use a `UnivariateSpline(k=5)` fit to OOF `(margin_pred, binary_outcome)` pairs as the calibration bridge:
+
+```python
+from scipy.interpolate import UnivariateSpline
+t = 25  # clip threshold; adjust if empirical range differs
+spline = UnivariateSpline(
+    np.clip(oof_margin_preds, -t, t),
+    oof_binary_outcomes,
+    k=5,
+)
+prob = np.clip(spline(np.clip(margin_pred, -t, t)), 0.025, 0.975)
+```
+
+The inner clip (`[-t, t]`) prevents wild extrapolation beyond the training range. `t = 25` is the default based on historical college basketball tournament margin distributions; validate that this threshold covers ≥ 99% of OOF margin observations before use, and log `spline_clip_t` as an MLflow param if it differs from 25. The outer clip ensures the output is a valid probability. The spline must always be fit on OOF predictions — never on all training data. Validate the spline fit against empirical binned win rates (bin by 2-point margin intervals) before using it for submission; acceptance criterion is ECE < 0.02 on OOF predictions, identical to isotonic regression (see calibration validation below).
+
+**Calibration method selection rule:**
+- Classification output (probability) → isotonic regression or Platt scaling
+- Regression output (margin / score) → UnivariateSpline(k=5) with margin clipping
+
 **Calibration validation:**
 - Reliability diagram for each league (M and W separately)
 - Expected Calibration Error (ECE) < 0.02 target
@@ -566,6 +597,24 @@ Manual review of selected feature set against leakage checklist before any submi
 **Ensemble tiers (in order of complexity):**
 
 ```
+Tier 0 — LOSO-fold averaging (within a single model family; CV use only)
+  - When LOSO CV produces N held-out-fold models (one per season), average their
+    RAW (uncalibrated) predictions across folds before feeding into Tier 1.
+  - Correct order: average raw outputs → then calibrate the average once.
+    Do NOT calibrate each fold independently before averaging; that would
+    compound calibration artefacts and conflict with the single-calibration
+    philosophy of Tier 3. This matches the modeh7 reference implementation,
+    which averages raw margin predictions across fold models and calibrates once.
+  - Each fold model was trained on a slightly different data subset; averaging
+    reduces within-family variance at near-zero marginal cost once CV models exist.
+  - CV use only: Tier 0 fold-averaging applies within cross-validation to assess
+    stability. At inference time (2026 submission), there are no held-out folds
+    to replicate; the selected Tier 1–3 ensemble is applied directly. Do not
+    attempt to re-run all 20+ LOSO fold models on 2026 submission data.
+  - This does NOT substitute for Tier 1/2 diversity across model families; it is
+    complementary: Tier 0 reduces within-family variance, Tiers 1/2 reduce
+    between-family variance.
+
 Tier 1 — Weighted average (simple blend)
   - Weights: uniform or grid-searched on CV
   - Members: seed-diff logistic + Elo logistic + GBT
@@ -583,6 +632,18 @@ Tier 3 — Calibrated stack
   - Apply isotonic calibration to Tier 2 output
   - Final clipping applied
 ```
+
+**Margin scaling knob (for regression-target models):** Before applying spline calibration, the predicted margin can be multiplied by a scalar `α`:
+
+```python
+calibrated_prob = spline(np.clip(margin_pred * alpha, -t, t))
+```
+
+- `α > 1.0`: amplifies predictions → more extreme probabilities (aggressive)
+- `α < 1.0`: dampens predictions → closer to 0.5 (conservative)
+- `α = 1.0`: no modification (default; first-place solution used this)
+
+The optimal `α` should be searched on CV, not set by intuition. Log `alpha` as an MLflow param for any regression-target model run. Do not tune `α` on the 2025 holdout.
 
 **Ensemble construction rules:**
 - For stacking, `OOF` means predictions generated only from out-of-season validation folds under the leave-seasons-out scheme. Do not create a second random-fold OOF layer inside the training seasons unless the plan is explicitly amended.
@@ -764,10 +825,10 @@ remote      (P < 0.03): Championship and long-shot cross-bracket paths
   - 2023-2024 flat Brier: `0.195566`
   - 2025 holdout run: `a11c60d33cde4fd68f7852fc65dda1db`
 
-- Women: `LATE-RATE-02 v1` routed women + ESPN four-factor model
-  - MLflow run name: `late-rate-02-women-espn-four-factor`
-  - 2023-2024 flat Brier: `0.130427`
-  - 2025 holdout run name: `val-01-2025-holdout-women-late-rate-02`
+- Women: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
+  - MLflow run name: `late-feat-29-women-conf-rank`
+  - 2023-2024 flat Brier: `0.130381`
+  - 2025 holdout run name: `val-01-2025-holdout-women-late-feat-29`
 
 **Gate 3 operating rule:** these are the submission-default models unless a later Gate 3 challenger beats them on the same held-out flat-Brier protocol. No model is promoted during Stage 2 inference preparation for subjective reasons, additional complexity, or leaderboard curiosity alone.
 
@@ -787,7 +848,7 @@ Before each submission:
 If the Stage 2 pipeline breaks after Selection Sunday:
 1. First fall back to the frozen leaders already selected in this plan:
    - men: generalization-tuned reference-style margin model
-   - women: `LATE-ARCH-RG-08`
+   - women: `LATE-FEAT-29 v1`
 2. If the frozen-leader path itself is unavailable operationally, fall back to the emergency minimum viable baselines:
    - men: seed-diff logistic baseline
    - women: seed-plus-Elo logistic baseline
@@ -822,7 +883,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | ARCH-RG-05 | Round-group blend (M) | R1 model + R2+ model, blended by round_group | Phase A+B+C | M | Blending round-group models improves held-out flat Brier by specializing on guaranteed vs later-round games | P2 |
 | ARCH-RG-06 | Round-group blend (W) | R1 model + R2+ model, blended by round_group | Phase A+B+C | W | Same, women's data | P2 |
 | LATE-ARCH-RG-07 | Routed round-group model (M) | Separate routed models | Current frozen men feature family | M | A true routed `R1` vs `R2+` men model improves overall flat Brier where calibration-only adjustments did not | P1 |
-| LATE-ARCH-RG-08 | Routed round-group model (W) | Separate routed models | `ARCH-04B` core features first; add one women-specific feature only if needed | W | Women may benefit from stage-specific coefficient weighting even if unified calibration looks strong | P1 |
+| LATE-ARCH-RG-08 | Routed round-group model (W) | Separate routed models | Current frozen women feature family (LATE-FEAT-29 v1 feature set); add one women-specific feature only if needed | W | Women may benefit from stage-specific coefficient weighting even if unified calibration looks strong | P1 |
 | LATE-RATE-01 | Improved latent strength model (M) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | M | A stronger upstream men strength rating improves tournament probabilities more than another broad classifier | P1 |
 | LATE-RATE-02 | Improved latent strength model (W) | Rating model + simple downstream classifier | ESPN- and detailed-results-derived team strength features | W | Women still have room for improvement through upstream strength estimation rather than calibration tweaks | P1 |
 | LATE-EMB-01 | Team-embedding challenger (M) | Representation learner + simple classifier | Regular-season game graph embeddings + frozen men features | M | Learned team embeddings capture matchup structure missed by scalar ratings | P3 |
@@ -831,6 +892,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-ARCH-DW-01 | Decay-weighted training (M+W) | Any base learner with exponential sample weights | Current best feature family per league | M+W | Recency-weighted training (§2.1 notes this as a possibility but no experiment exists) reduces the influence of older seasons and may improve generalization; decay tested at 0.9 (men) and 0.93 (women) | P2 |
 | LATE-ARCH-META-01 | Logit-Ridge meta-learner (M+W) | Ridge regression in logit space on OOF base learner probabilities | OOF logits from current best ensemble members | M+W | Ridge in log-odds space emphasizes tail calibration where Brier loss is steepest; alpha tuned via leave-seasons-out CV; alternative to no-intercept logistic in COMBO-03/04 Tier 2 | P2 |
 | LATE-ARCH-CB-01 | CatBoost base learner (M+W) | CatBoost | Current best feature family per league | M+W | Ordered boosting and categorical handling adds diverse base learner predictions; reference notebook shows CatBoost as highest meta-weight ensemble member (0.359 for men); warranted only if diversity audit shows high OOF correlation among current members | P3 |
+| LATE-ARCH-MW-01 | Unified M+W model with gender flag | XGBoost/LightGBM | All Phase A+B features + `men_women` binary flag (1=M, 0=W); nullable men-only features (Massey, coach) set to 0 or league-median for women rows | M+W | Pooling men's and women's tournament data roughly doubles the training sample; XGBoost learns gender-specific patterns via the `men_women` flag. **Promotion requires all three**: (1) combined M+W flat Brier beats COMBO-05 on 2023–2024 CV; (2) men's Brier ≤ men frozen leader (0.195566); (3) women's Brier ≤ women frozen leader (0.130381). This is a challenger to committed ADR 0004 — promotion also requires an explicit update to `docs/decisions/0004-men-women-tournament-modeling-strategy.md`. | P3 |
 
 ### 9.2 Feature Experiments
 
@@ -867,6 +929,8 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 | LATE-FEAT-29 | Conference percentile rank (M+W) | conf_pct_rank_diff: team's within-conference rank percentile | Frozen leader challenger | Conference percentile rank normalizes for conference depth and correlates with tournament seeding committee adjustments; lower collinearity with raw Elo than raw conference rank | P3 |
 | LATE-FEAT-30 | Massey PCA + disagreement (M) | massey_pca1_diff, massey_disagreement_diff: first PC of Massey system ratings and cross-system std | Frozen leader challenger (men only; women Massey data is sparse) | First PC captures consensus latent strength across 100+ systems; disagreement std captures uncertainty orthogonal to consensus; complement FEAT-04 single-system rank | P2 |
 | LATE-FEAT-31 | Tournament program pedigree (M+W) | pedigree_score_diff: 5-year tournament win rate weighted by round reached | Frozen leader challenger | Program pedigree captures institutional tournament experience beyond coaching tenure; 5-year window balances recency and sample size; computed from historical tournament results (no leakage by construction) | P3 |
+| MH7-FEAT-01 | GLM team quality (Bradley-Terry OLS) (M+W) | `glm_quality_diff = α_LowTeamID - α_HighTeamID` (positive when LowTeam is stronger); OLS fit per season independently on that season's regular-season games only (no cross-season pooling; complies with §2.2 leakage policy); design matrix: one row per game, one column per team, +1 for the winning team, −1 for the losing team, no intercept; target: `WScore - LScore` (winner's margin); estimated via `statsmodels.OLS(y, X).fit()` where `X` is the sparse indicator matrix and `y` is the point differential vector; coefficients α_i are in points | Frozen leader challenger | Simultaneous estimation of all team strengths in one season-wide OLS pass captures the full game covariance structure, orthogonal to both sequential Elo and iterative SOS; modeh7 first-place solution shows AUC ~0.84 standalone, additive over seeds and Elo as a GBT feature | P2 |
+| MH7-FEAT-02 | Opponent raw box-score averages (M+W) | Six stats, each as `low_avg_opp_{stat}`, `high_avg_opp_{stat}`, `avg_opp_{stat}_diff` (Low − High), where `{stat}` ∈ {Score, FGA, Blk, PF, TO, Stl}: for each team, the average stats recorded **by opponents against that team** across regular-season games (OT-normalized per §3.3). `low_avg_opp_Score` = mean points allowed by LowTeamID per game; higher values indicate weaker defense. All six diffs follow the schema convention (LowTeamID value minus HighTeamID value). Men's detailed results available from 2003; women's from 2010; training floor is 2010 for both leagues per §2.4 — pre-2010 rows have these columns set to null | Frozen leader challenger | Raw opponent-perspective counting stats provide a simpler, interpretable defensive quality and schedule-strength proxy that is orthogonal to possession-adjusted efficiency; GBT can learn non-linear combinations that complement `def_eff` | P3 |
 
 ### 9.3 Combination and Validation Experiments
 
@@ -919,7 +983,7 @@ If the Stage 2 pipeline breaks after Selection Sunday:
 ### Gate 3 — Ensemble and Final Submission (by 2026-03-18)
 - [ ] Gate 3 freeze recorded and unchanged unless a later challenger beats the frozen leader on held-out flat Brier
 - [ ] Men frozen leader: generalization-tuned reference-style margin model
-- [ ] Women frozen leader: `LATE-RATE-02 v1`
+- [ ] Women frozen leader: `LATE-FEAT-29 v1` routed women + ESPN four-factor + conference-rank model
 - [ ] COMBO-05 and COMBO-06 complete
 - [ ] VAL-03 bracket DP diagnostics run on final ensemble
 - [ ] Per-bucket and `R1/R2+` Brier decomposition reviewed; no unexpected degradation on guaranteed `R1` games

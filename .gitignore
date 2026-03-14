@@ -216,6 +216,8 @@ mlruns/
 mlflow.db
 .ipynb_checkpoints/
 notebooks/0-1471-stage-2-metastack-madness-engine-eda.ipynb
+notebooks/goto-conversion-winning-solution.ipynb
+notebooks/2025-1st-place-solution-modeh7-2026-adaptation.ipynb
 !docs/data/
 !docs/data/**
 !data/README.md

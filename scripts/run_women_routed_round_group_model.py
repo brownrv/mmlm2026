@@ -102,6 +102,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include ESPN-derived women four-factor component differentials.",
     )
     parser.add_argument(
+        "--include-late5-form",
+        action="store_true",
+        help="Include late-5 offense/defense split differentials as extra features.",
+    )
+    parser.add_argument(
+        "--include-conference-rank",
+        action="store_true",
+        help="Include conference percentile rank differential as an extra feature.",
+    )
+    parser.add_argument(
         "--include-late-bundle",
         action="store_true",
         help="Include the bundled late challenger feature set (24/27/28/29/31).",
@@ -218,12 +228,25 @@ def main() -> int:
             espn_features,
         )
         feature_cols.extend(espn_component_cols)
-    if args.include_late_bundle:
+    if args.include_late5_form or args.include_late_bundle:
         regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
-        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         late5 = build_late5_form_split_features(regular_season_detailed)
-        site_profiles = build_site_performance_features(context.regular_season)
-        win_quality = build_win_quality_bin_features(context.regular_season)
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late5[["Season", "TeamID", "late5_off_eff"]],
+            feature_name="late5_off_eff",
+            diff_name="late5_off_diff",
+        )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            late5[["Season", "TeamID", "late5_def_eff"]],
+            feature_name="late5_def_eff",
+            diff_name="late5_def_diff",
+            defensive=True,
+        )
+        feature_cols.extend(["late5_off_diff", "late5_def_diff"])
+    if args.include_conference_rank or args.include_late_bundle:
+        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         summary_strength = build_team_season_summary(context.regular_season)[
             ["Season", "TeamID", "avg_margin"]
         ]
@@ -232,6 +255,16 @@ def main() -> int:
             team_conferences,
             strength_col="avg_margin",
         )
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            conf_rank[["Season", "TeamID", "conf_pct_rank"]],
+            feature_name="conf_pct_rank",
+            diff_name="conf_pct_rank_diff",
+        )
+        feature_cols.append("conf_pct_rank_diff")
+    if args.include_late_bundle:
+        site_profiles = build_site_performance_features(context.regular_season)
+        win_quality = build_win_quality_bin_features(context.regular_season)
         pedigree = build_program_pedigree_features(context.seeds, context.results)
         late_bundle = (
             late5.merge(site_profiles, on=["Season", "TeamID"], how="outer")
@@ -239,19 +272,6 @@ def main() -> int:
             .merge(conf_rank, on=["Season", "TeamID"], how="outer")
             .merge(pedigree, on=["Season", "TeamID"], how="outer")
             .fillna(0.0)
-        )
-        feature_table = _attach_team_scalar_feature(
-            feature_table,
-            late_bundle[["Season", "TeamID", "late5_off_eff"]],
-            feature_name="late5_off_eff",
-            diff_name="late5_off_diff",
-        )
-        feature_table = _attach_team_scalar_feature(
-            feature_table,
-            late_bundle[["Season", "TeamID", "late5_def_eff"]],
-            feature_name="late5_def_eff",
-            diff_name="late5_def_diff",
-            defensive=True,
         )
         feature_table = _attach_team_scalar_feature(
             feature_table,
@@ -279,25 +299,16 @@ def main() -> int:
         )
         feature_table = _attach_team_scalar_feature(
             feature_table,
-            late_bundle[["Season", "TeamID", "conf_pct_rank"]],
-            feature_name="conf_pct_rank",
-            diff_name="conf_pct_rank_diff",
-        )
-        feature_table = _attach_team_scalar_feature(
-            feature_table,
             late_bundle[["Season", "TeamID", "pedigree_score"]],
             feature_name="pedigree_score",
             diff_name="pedigree_score_diff",
         )
         feature_cols.extend(
             [
-                "late5_off_diff",
-                "late5_def_diff",
                 "road_win_pct_diff",
                 "neutral_net_eff_diff",
                 "close_win_pct_5_diff",
                 "blowout_win_pct_diff",
-                "conf_pct_rank_diff",
                 "pedigree_score_diff",
             ]
         )
@@ -405,12 +416,24 @@ def main() -> int:
             team_spellings_path=args.team_spellings_path,
         )
         infer_frame, _ = _attach_espn_component_features(infer_frame, espn_features)
-    if args.include_late_bundle:
+    if args.include_late5_form or args.include_late_bundle:
         regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
-        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         late5 = build_late5_form_split_features(regular_season_detailed)
-        site_profiles = build_site_performance_features(context.regular_season)
-        win_quality = build_win_quality_bin_features(context.regular_season)
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late5[["Season", "TeamID", "late5_off_eff"]],
+            feature_name="late5_off_eff",
+            diff_name="late5_off_diff",
+        )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            late5[["Season", "TeamID", "late5_def_eff"]],
+            feature_name="late5_def_eff",
+            diff_name="late5_def_diff",
+            defensive=True,
+        )
+    if args.include_conference_rank or args.include_late_bundle:
+        team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         summary_strength = build_team_season_summary(context.regular_season)[
             ["Season", "TeamID", "avg_margin"]
         ]
@@ -419,6 +442,15 @@ def main() -> int:
             team_conferences,
             strength_col="avg_margin",
         )
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            conf_rank[["Season", "TeamID", "conf_pct_rank"]],
+            feature_name="conf_pct_rank",
+            diff_name="conf_pct_rank_diff",
+        )
+    if args.include_late_bundle:
+        site_profiles = build_site_performance_features(context.regular_season)
+        win_quality = build_win_quality_bin_features(context.regular_season)
         pedigree = build_program_pedigree_features(context.seeds, context.results)
         late_bundle = (
             late5.merge(site_profiles, on=["Season", "TeamID"], how="outer")
@@ -426,19 +458,6 @@ def main() -> int:
             .merge(conf_rank, on=["Season", "TeamID"], how="outer")
             .merge(pedigree, on=["Season", "TeamID"], how="outer")
             .fillna(0.0)
-        )
-        infer_frame = _attach_team_scalar_feature(
-            infer_frame,
-            late_bundle[["Season", "TeamID", "late5_off_eff"]],
-            feature_name="late5_off_eff",
-            diff_name="late5_off_diff",
-        )
-        infer_frame = _attach_team_scalar_feature(
-            infer_frame,
-            late_bundle[["Season", "TeamID", "late5_def_eff"]],
-            feature_name="late5_def_eff",
-            diff_name="late5_def_diff",
-            defensive=True,
         )
         infer_frame = _attach_team_scalar_feature(
             infer_frame,
@@ -463,12 +482,6 @@ def main() -> int:
             late_bundle[["Season", "TeamID", "blowout_win_pct_15"]],
             feature_name="blowout_win_pct_15",
             diff_name="blowout_win_pct_diff",
-        )
-        infer_frame = _attach_team_scalar_feature(
-            infer_frame,
-            late_bundle[["Season", "TeamID", "conf_pct_rank"]],
-            feature_name="conf_pct_rank",
-            diff_name="conf_pct_rank_diff",
         )
         infer_frame = _attach_team_scalar_feature(
             infer_frame,
@@ -760,6 +773,10 @@ def _log_mlflow_run(
         tags["depends_on"] += ",feature:late_feat_18_espn_four_factor_v1"
     if args.include_espn_components:
         tags["depends_on"] += ",feature:late_ext_03_espn_components_v1"
+    if args.include_late5_form:
+        tags["depends_on"] += ",feature:late_feat_24_late5_split_v1"
+    if args.include_conference_rank:
+        tags["depends_on"] += ",feature:late_feat_29_conf_pct_rank_v1"
     if args.use_decay_weighting:
         tags["depends_on"] += ",arch:late_arch_dw_01_v1"
     if args.include_late_bundle:
@@ -777,6 +794,8 @@ def _log_mlflow_run(
                 "include_season_momentum": str(args.include_season_momentum).lower(),
                 "include_espn_four_factor": str(args.include_espn_four_factor).lower(),
                 "include_espn_components": str(args.include_espn_components).lower(),
+                "include_late5_form": str(args.include_late5_form).lower(),
+                "include_conference_rank": str(args.include_conference_rank).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
                 "decay_base": args.decay_base,

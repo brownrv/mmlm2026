@@ -29,6 +29,94 @@ Related:
 - docs/decisions/<file>.md
 
 ---
+## 2026-03-13 — LATE-FEAT-24 + LATE-FEAT-29 v1: women late-5 plus conference rank
+
+Status: Completed
+
+Hypothesis:
+- Combining recent-form signal with conference percentile rank may improve on the standalone women `LATE-FEAT-29` challenger by adding a complementary late-season component.
+
+Dependencies:
+- feature:late_feat_24_late5_split_v1
+- feature:late_feat_29_conf_pct_rank_v1
+- model:women_late_rate_02_v1
+
+MLflow:
+- Run name: `late-feat-24-29-women`
+
+Result:
+- The combined women challenger scored `flat_brier = 0.131002` and `log_loss = 0.400623` on the 2023–2024 held-out window.
+- That is worse than `LATE-FEAT-29` alone (`0.130381`) and also worse than the current women leader candidate margin over the frozen baseline.
+- This indicates `late5` does not add useful incremental signal once conference percentile rank is already present on the women ESPN four-factor path.
+
+Re-test if:
+- A later women branch changes the base path materially enough that recent-form interactions need to be revisited.
+
+Related:
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-FEAT-29 v1: conference percentile rank only
+
+Status: Completed
+
+Hypothesis:
+- Within-conference percentile rank may capture residual team-quality signal not fully absorbed by seed, Elo, or ESPN-based strength features.
+
+Dependencies:
+- feature:late_feat_29_conf_pct_rank_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+
+MLflow:
+- Run name: `late-feat-29-men-conf-rank`
+- Run name: `late-feat-29-women-conf-rank`
+
+Result:
+- Men scored `flat_brier = 0.197564` and `log_loss = 0.580535`, which is still worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.130381` and `log_loss = 0.399624`, narrowly beating the current frozen women leader `0.130427` by `0.000046`.
+- The 2025 sanity check also passed: `val-01-2025-holdout-women-late-feat-29` scored `flat_brier = 0.102179`, `log_loss = 0.324663`, `r1_brier = 0.077814`, and `r2plus_brier = 0.127330`.
+- That clears `LATE-FEAT-29` as a valid women leader candidate over `late-rate-02-women-espn-four-factor`.
+
+Re-test if:
+- A later women branch combines conference percentile rank with another narrow signal and needs a new baseline.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-13 — LATE-FEAT-24 v1: late-5 form split only
+
+Status: Completed
+
+Hypothesis:
+- The late-5 offense/defense split may carry useful late-season signal on its own even if the larger late-feature bundle was too noisy.
+
+Dependencies:
+- feature:late_feat_24_late5_split_v1
+- model:men_reference_margin_generalization_v1
+- model:women_late_rate_02_v1
+
+MLflow:
+- Run name: `late-feat-24-men-late5-form`
+- Run name: `late-feat-24-women-late5-form`
+
+Result:
+- Men scored `flat_brier = 0.198986` and `log_loss = 0.584564`, which is still materially worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.131028` and `log_loss = 0.400724`, which is much better than the full late-feature bundle and only `0.000601` behind the frozen women leader `0.130427`.
+- This is still a loser in both leagues, but it suggests `LATE-FEAT-24` is the only feature from the 24/27/28/29/31 branch that retained plausible standalone value, especially for women.
+
+Re-test if:
+- A follow-up branch pairs late-5 form with only one other narrow feature instead of the full bundle.
+- The women ESPN four-factor path gets another close near-miss that could plausibly benefit from a recent-form signal.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [src/mmlm2026/features/primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+
+---
 ## 2026-03-13 — LATE-FEAT bundle v1: late-5, site profile, win-quality, conference rank, and pedigree
 
 Status: Completed
