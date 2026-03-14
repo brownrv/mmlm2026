@@ -28,6 +28,7 @@ from mmlm2026.features.phase_b import build_glm_quality_features
 from mmlm2026.features.primary import (
     build_conference_percentile_features,
     build_late5_form_split_features,
+    build_opponent_raw_boxscore_features,
     build_program_pedigree_features,
     build_season_momentum_features,
     build_site_performance_features,
@@ -114,6 +115,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include conference percentile rank differential as an extra feature.",
     )
     parser.add_argument(
+        "--include-pace",
+        action="store_true",
+        help="Include team pace differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-opp-boxscore",
+        action="store_true",
+        help="Include opponent raw box-score average differentials as extra features.",
+    )
+    parser.add_argument(
         "--include-glm-quality",
         action="store_true",
         help="Include season-level OLS team-quality differential as an extra feature.",
@@ -137,6 +148,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--elo-winner-bonus", type=float, default=0.0)
     parser.add_argument("--elo-early-k-boost-games", type=int, default=0)
     parser.add_argument("--elo-early-k-multiplier", type=float, default=1.0)
+    parser.add_argument("--elo-conference-reversion", action="store_true")
     return parser
 
 
@@ -173,6 +185,12 @@ def main() -> int:
             winner_bonus=args.elo_winner_bonus,
             early_k_boost_games=args.elo_early_k_boost_games,
             early_k_multiplier=args.elo_early_k_multiplier,
+            team_conferences=(
+                pd.read_csv(args.data_dir / "WTeamConferences.csv")
+                if args.elo_conference_reversion
+                else None
+            ),
+            conference_reversion=args.elo_conference_reversion,
         )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
         feature_table = attach_secondary_elo_features(
             feature_table,
@@ -263,6 +281,24 @@ def main() -> int:
             defensive=True,
         )
         feature_cols.extend(["late5_off_diff", "late5_def_diff"])
+    if args.include_opp_boxscore:
+        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        opp_box = build_opponent_raw_boxscore_features(regular_season_detailed)
+        for feature_name, diff_name in [
+            ("avg_opp_score", "avg_opp_score_diff"),
+            ("avg_opp_fga", "avg_opp_fga_diff"),
+            ("avg_opp_blk", "avg_opp_blk_diff"),
+            ("avg_opp_pf", "avg_opp_pf_diff"),
+            ("avg_opp_to", "avg_opp_to_diff"),
+            ("avg_opp_stl", "avg_opp_stl_diff"),
+        ]:
+            feature_table = _attach_team_scalar_feature(
+                feature_table,
+                opp_box[["Season", "TeamID", feature_name]],
+                feature_name=feature_name,
+                diff_name=diff_name,
+            )
+            feature_cols.append(diff_name)
     if args.include_conference_rank or args.include_late_bundle:
         team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         summary_strength = build_team_season_summary(context.regular_season)[
@@ -280,6 +316,15 @@ def main() -> int:
             diff_name="conf_pct_rank_diff",
         )
         feature_cols.append("conf_pct_rank_diff")
+    if args.include_pace:
+        pace = build_team_season_summary(context.regular_season)[["Season", "TeamID", "pace"]]
+        feature_table = _attach_team_scalar_feature(
+            feature_table,
+            pace,
+            feature_name="pace",
+            diff_name="pace_diff",
+        )
+        feature_cols.append("pace_diff")
     if args.include_glm_quality:
         glm_quality = build_glm_quality_features(context.regular_season)
         feature_table = _attach_team_scalar_feature(
@@ -387,6 +432,12 @@ def main() -> int:
             winner_bonus=args.elo_winner_bonus,
             early_k_boost_games=args.elo_early_k_boost_games,
             early_k_multiplier=args.elo_early_k_multiplier,
+            team_conferences=(
+                pd.read_csv(args.data_dir / "WTeamConferences.csv")
+                if args.elo_conference_reversion
+                else None
+            ),
+            conference_reversion=args.elo_conference_reversion,
         )[["Season", "TeamID", "elo_momentum"]].rename(columns={"elo_momentum": "elo"})
         infer_frame = attach_secondary_elo_features(
             infer_frame,
@@ -462,6 +513,23 @@ def main() -> int:
             diff_name="late5_def_diff",
             defensive=True,
         )
+    if args.include_opp_boxscore:
+        regular_season_detailed = pd.read_csv(args.data_dir / "WRegularSeasonDetailedResults.csv")
+        opp_box = build_opponent_raw_boxscore_features(regular_season_detailed)
+        for feature_name, diff_name in [
+            ("avg_opp_score", "avg_opp_score_diff"),
+            ("avg_opp_fga", "avg_opp_fga_diff"),
+            ("avg_opp_blk", "avg_opp_blk_diff"),
+            ("avg_opp_pf", "avg_opp_pf_diff"),
+            ("avg_opp_to", "avg_opp_to_diff"),
+            ("avg_opp_stl", "avg_opp_stl_diff"),
+        ]:
+            infer_frame = _attach_team_scalar_feature(
+                infer_frame,
+                opp_box[["Season", "TeamID", feature_name]],
+                feature_name=feature_name,
+                diff_name=diff_name,
+            )
     if args.include_conference_rank or args.include_late_bundle:
         team_conferences = pd.read_csv(args.data_dir / "WTeamConferences.csv")
         summary_strength = build_team_season_summary(context.regular_season)[
@@ -477,6 +545,14 @@ def main() -> int:
             conf_rank[["Season", "TeamID", "conf_pct_rank"]],
             feature_name="conf_pct_rank",
             diff_name="conf_pct_rank_diff",
+        )
+    if args.include_pace:
+        pace = build_team_season_summary(context.regular_season)[["Season", "TeamID", "pace"]]
+        infer_frame = _attach_team_scalar_feature(
+            infer_frame,
+            pace,
+            feature_name="pace",
+            diff_name="pace_diff",
         )
     if args.include_glm_quality:
         glm_quality = build_glm_quality_features(context.regular_season)
@@ -717,12 +793,19 @@ def _uses_custom_women_elo(args: argparse.Namespace) -> bool:
         args.elo_winner_bonus != 0.0
         or args.elo_early_k_boost_games > 0
         or args.elo_early_k_multiplier != 1.0
+        or args.elo_conference_reversion
     )
 
 
 def _build_women_elo_ratings(context, args: argparse.Namespace) -> pd.DataFrame:
     if not _uses_custom_women_elo(args):
         return context.elo_ratings
+
+    team_conferences = (
+        pd.read_csv(args.data_dir / "WTeamConferences.csv")
+        if args.elo_conference_reversion
+        else None
+    )
 
     return compute_pre_tourney_elo_ratings(
         context.regular_season,
@@ -739,6 +822,8 @@ def _build_women_elo_ratings(context, args: argparse.Namespace) -> pd.DataFrame:
         winner_bonus=args.elo_winner_bonus,
         early_k_boost_games=args.elo_early_k_boost_games,
         early_k_multiplier=args.elo_early_k_multiplier,
+        team_conferences=team_conferences,
+        conference_reversion=args.elo_conference_reversion,
     )
 
 
@@ -834,6 +919,10 @@ def _log_mlflow_run(
         tags["depends_on"] += ",feature:late_feat_24_late5_split_v1"
     if args.include_conference_rank:
         tags["depends_on"] += ",feature:late_feat_29_conf_pct_rank_v1"
+    if args.include_pace:
+        tags["depends_on"] += ",feature:cooper_feat_01_pace_v1"
+    if args.include_opp_boxscore:
+        tags["depends_on"] += ",feature:mh7_feat_02_opp_boxscore_v1"
     if args.include_glm_quality:
         tags["depends_on"] += ",feature:mh7_feat_01_glm_quality_v1"
     if args.use_decay_weighting:
@@ -855,6 +944,8 @@ def _log_mlflow_run(
                 "include_espn_components": str(args.include_espn_components).lower(),
                 "include_late5_form": str(args.include_late5_form).lower(),
                 "include_conference_rank": str(args.include_conference_rank).lower(),
+                "include_pace": str(args.include_pace).lower(),
+                "include_opp_boxscore": str(args.include_opp_boxscore).lower(),
                 "include_glm_quality": str(args.include_glm_quality).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
                 "use_decay_weighting": str(args.use_decay_weighting).lower(),
@@ -862,6 +953,7 @@ def _log_mlflow_run(
                 "elo_winner_bonus": args.elo_winner_bonus,
                 "elo_early_k_boost_games": args.elo_early_k_boost_games,
                 "elo_early_k_multiplier": args.elo_early_k_multiplier,
+                "elo_conference_reversion": str(args.elo_conference_reversion).lower(),
             }
         )
         mlflow.log_metrics(

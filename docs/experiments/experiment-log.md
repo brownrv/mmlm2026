@@ -3,6 +3,100 @@
 Use this file as a lightweight chronological index of notable experiments.
 
 ---
+## 2026-03-14 — MH7-FEAT-02 v1: opponent raw box-score averages
+
+Status: Completed
+
+Hypothesis:
+- Opponent raw box-score averages may provide a simple defensive and schedule-strength proxy that complements the current frozen leader families.
+
+Dependencies:
+- feature:mh7_feat_02_opp_boxscore_v1
+- model:men_reference_margin_generalization_v1
+- model:women_cooper_arch_01_04_v1
+
+MLflow:
+- Run name: `mh7-feat-02-men-opp-boxscore`
+- Run name: `mh7-feat-02-women-opp-boxscore`
+
+Result:
+- Men scored `flat_brier = 0.196842` and `log_loss = 0.577431`, which is still worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.136169` and `log_loss = 0.411827`, which is far worse than the frozen women leader `0.129201`.
+- Conclusion: the standalone opponent-boxscore feature family does not advance in either league.
+
+Re-test if:
+- A later non-linear model family is explicitly tuned to exploit interactions between opponent box-score averages and pace.
+- Opponent box-score features are reframed into a narrower subset instead of the full six-stat family.
+
+Related:
+- [primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-14 — COOPER-FEAT-01 v1: pace differential
+
+Status: Completed
+
+Hypothesis:
+- Pace may modulate confidence in margin and efficiency signals enough to improve the current frozen leader families as a standalone extra feature.
+
+Dependencies:
+- feature:cooper_feat_01_pace_v1
+- model:men_reference_margin_generalization_v1
+- model:women_cooper_arch_01_04_v1
+
+MLflow:
+- Run name: `cooper-feat-01-men-pace`
+- Run name: `cooper-feat-01-women-pace`
+
+Result:
+- Men scored `flat_brier = 0.197234` and `log_loss = 0.579496`, which is still worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.130039` and `log_loss = 0.398975`, which is still worse than the frozen women leader `0.129201`.
+- Conclusion: the standalone pace feature does not advance in either league.
+
+Re-test if:
+- A later model family is explicitly designed to learn stronger non-linear interactions between pace and efficiency features.
+- Additional opponent-level scoring context is added and pace becomes part of a broader normalization branch.
+
+Related:
+- [primary.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/primary.py)
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+
+---
+## 2026-03-14 — COOPER-ARCH-03 v1: conference-mean Elo reversion
+
+Status: Completed
+
+Hypothesis:
+- Reverting each team toward its conference mean instead of the global mean between seasons may produce a stronger preseason prior and improve Elo-based upstream strength features.
+
+Dependencies:
+- feature:elo_tuned_carryover_men_v1
+- feature:late_feat_29_conf_pct_rank_v1
+- feature:late_rate_02_espn_four_factor_v1
+- arch:cooper_arch_03_v1
+
+MLflow:
+- Run name: `cooper-arch-03-men`
+- Run name: `cooper-arch-03-women`
+
+Result:
+- Men scored `flat_brier = 0.197902` and `log_loss = 0.583183`, which is worse than the frozen men leader `0.195566`.
+- Women scored `flat_brier = 0.130115` and `log_loss = 0.398909`, which is worse than the current frozen women leader `0.129201`.
+- Conclusion: conference-mean Elo reversion does not advance in either league and should not replace the current COOPER women freeze.
+
+Re-test if:
+- Conference definitions are cleaned or stabilized materially enough to change season-to-season membership reliability.
+- A later Elo branch changes the base carryover dynamics enough that conference reversion deserves another pass.
+
+Related:
+- [scripts/run_men_reference_margin.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_men_reference_margin.py)
+- [scripts/run_women_routed_round_group_model.py](/c:/Users/brown/Documents/GitHub/mmlm2026/scripts/run_women_routed_round_group_model.py)
+- [elo.py](/c:/Users/brown/Documents/GitHub/mmlm2026/src/mmlm2026/features/elo.py)
+
+---
 ## 2026-03-14 — COOPER-ARCH-01 + COOPER-ARCH-04 v1: win-bonus Elo plus early-season K boost
 
 Status: Completed

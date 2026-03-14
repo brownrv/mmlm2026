@@ -305,6 +305,66 @@ def test_compute_pre_tourney_elo_ratings_supports_early_k_boost() -> None:
     assert boosted_gap > baseline_gap
 
 
+def test_compute_pre_tourney_elo_ratings_supports_conference_reversion() -> None:
+    regular = pd.DataFrame(
+        {
+            "Season": [2024, 2024, 2025],
+            "DayNum": [10, 20, 10],
+            "WTeamID": [10, 30, 20],
+            "LTeamID": [20, 40, 10],
+            "WScore": [80, 78, 75],
+            "LScore": [60, 58, 65],
+            "WLoc": ["N", "N", "N"],
+        }
+    )
+    team_conferences = pd.DataFrame(
+        {
+            "Season": [2024, 2024, 2024, 2024, 2025, 2025, 2025, 2025],
+            "TeamID": [10, 20, 30, 40, 10, 20, 30, 40],
+            "ConfAbbrev": ["A", "B", "A", "B", "A", "B", "A", "B"],
+        }
+    )
+
+    baseline = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        season_carryover=0.5,
+        scale=400.0,
+        mov_alpha=0.0,
+    )
+    reverted = compute_pre_tourney_elo_ratings(
+        regular,
+        initial_rating=1500.0,
+        k_factor=20.0,
+        season_carryover=0.5,
+        scale=400.0,
+        mov_alpha=0.0,
+        team_conferences=team_conferences,
+        conference_reversion=True,
+    )
+
+    baseline_team10 = baseline.loc[
+        (baseline["Season"] == 2025) & (baseline["TeamID"] == 10),
+        "elo",
+    ].iloc[0]
+    reverted_team10 = reverted.loc[
+        (reverted["Season"] == 2025) & (reverted["TeamID"] == 10),
+        "elo",
+    ].iloc[0]
+    baseline_team20 = baseline.loc[
+        (baseline["Season"] == 2025) & (baseline["TeamID"] == 20),
+        "elo",
+    ].iloc[0]
+    reverted_team20 = reverted.loc[
+        (reverted["Season"] == 2025) & (reverted["TeamID"] == 20),
+        "elo",
+    ].iloc[0]
+
+    assert reverted_team10 > baseline_team10
+    assert reverted_team20 < baseline_team20
+
+
 def test_attach_secondary_elo_features_adds_prefixed_columns() -> None:
     frame = pd.DataFrame(
         {

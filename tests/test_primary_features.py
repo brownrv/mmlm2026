@@ -8,6 +8,7 @@ from mmlm2026.features.primary import (
     build_conference_percentile_features,
     build_late5_form_split_features,
     build_market_implied_strength_features,
+    build_opponent_raw_boxscore_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
@@ -37,6 +38,7 @@ def test_build_team_season_summary_returns_expected_metrics() -> None:
     win_pct_map = summary.set_index("TeamID")["win_pct"].to_dict()
     margin_map = summary.set_index("TeamID")["avg_margin"].to_dict()
     pythag_map = summary.set_index("TeamID")["pythag_expectancy"].to_dict()
+    pace_map = summary.set_index("TeamID")["pace"].to_dict()
 
     assert win_pct_map[10] == pytest.approx(0.5)
     assert win_pct_map[20] == pytest.approx(0.5)
@@ -44,6 +46,8 @@ def test_build_team_season_summary_returns_expected_metrics() -> None:
     assert margin_map[20] == pytest.approx(0.0)
     assert 0.0 < pythag_map[10] < 1.0
     assert 0.0 < pythag_map[20] < 1.0
+    assert pace_map[10] == pytest.approx(140.0)
+    assert pace_map[20] == pytest.approx(140.0)
 
 
 def test_build_season_momentum_features_returns_second_half_minus_first_half() -> None:
@@ -82,6 +86,39 @@ def test_build_market_implied_strength_features_returns_team_level_summary() -> 
 
     assert market_map[10] == pytest.approx(0.575)
     assert market_map[20] == pytest.approx(0.425)
+
+
+def test_build_opponent_raw_boxscore_features_returns_team_level_summary() -> None:
+    detailed = pd.DataFrame(
+        {
+            "Season": [2025],
+            "DayNum": [10],
+            "WTeamID": [10],
+            "LTeamID": [20],
+            "WScore": [80],
+            "LScore": [70],
+            "WFGA": [60],
+            "LFGA": [58],
+            "WBlk": [4],
+            "LBlk": [3],
+            "WPF": [12],
+            "LPF": [15],
+            "WTO": [10],
+            "LTO": [11],
+            "WStl": [7],
+            "LStl": [6],
+        }
+    )
+
+    opp_box = build_opponent_raw_boxscore_features(detailed)
+    team10 = opp_box.loc[opp_box["TeamID"] == 10].iloc[0]
+    team20 = opp_box.loc[opp_box["TeamID"] == 20].iloc[0]
+
+    assert team10["avg_opp_score"] == pytest.approx(70.0)
+    assert team10["avg_opp_fga"] == pytest.approx(58.0)
+    assert team10["avg_opp_blk"] == pytest.approx(3.0)
+    assert team20["avg_opp_score"] == pytest.approx(80.0)
+    assert team20["avg_opp_stl"] == pytest.approx(7.0)
 
 
 def test_build_phase_ab_team_features_merges_phase_a_and_b_inputs() -> None:
@@ -246,6 +283,13 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
             "avg_margin": [12.0, 6.0],
             "avg_score": [78.0, 70.0],
             "avg_points_allowed": [66.0, 64.0],
+            "pace": [144.0, 134.0],
+            "avg_opp_score": [66.0, 72.0],
+            "avg_opp_fga": [54.0, 58.0],
+            "avg_opp_blk": [2.0, 4.0],
+            "avg_opp_pf": [14.0, 17.0],
+            "avg_opp_to": [11.0, 13.0],
+            "avg_opp_stl": [5.0, 7.0],
             "pythag_expectancy": [0.75, 0.56],
             "season_momentum": [4.0, -2.0],
             "elo": [1600.0, 1500.0],
@@ -307,6 +351,13 @@ def test_build_phase_ab_tourney_and_matchup_features_compute_diffs() -> None:
     assert feature_table["seed_elo_gap_diff"].iloc[0] == pytest.approx(-275.0)
     assert feature_table["win_pct_diff"].iloc[0] == pytest.approx(0.2)
     assert feature_table["season_momentum_diff"].iloc[0] == pytest.approx(6.0)
+    assert feature_table["pace_diff"].iloc[0] == pytest.approx(10.0)
+    assert feature_table["avg_opp_score_diff"].iloc[0] == pytest.approx(-6.0)
+    assert feature_table["avg_opp_fga_diff"].iloc[0] == pytest.approx(-4.0)
+    assert feature_table["avg_opp_blk_diff"].iloc[0] == pytest.approx(-2.0)
+    assert feature_table["avg_opp_pf_diff"].iloc[0] == pytest.approx(-3.0)
+    assert feature_table["avg_opp_to_diff"].iloc[0] == pytest.approx(-2.0)
+    assert feature_table["avg_opp_stl_diff"].iloc[0] == pytest.approx(-2.0)
     assert feature_table["def_eff_diff"].iloc[0] == pytest.approx(6.0)
     assert feature_table["pythag_diff"].iloc[0] == pytest.approx(0.19)
     assert feature_table["massey_rank_diff"].iloc[0] == pytest.approx(20.0)

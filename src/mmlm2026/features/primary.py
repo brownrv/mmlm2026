@@ -56,6 +56,7 @@ def build_team_season_summary(
                 "win": 1,
                 "points_for": winner_score,
                 "points_against": loser_score,
+                "total_points": winner_score + loser_score,
                 "margin": winner_score - loser_score,
             }
         )
@@ -66,6 +67,7 @@ def build_team_season_summary(
                 "win": 0,
                 "points_for": loser_score,
                 "points_against": winner_score,
+                "total_points": winner_score + loser_score,
                 "margin": loser_score - winner_score,
             }
         )
@@ -79,6 +81,7 @@ def build_team_season_summary(
             avg_margin=("margin", "mean"),
             avg_score=("points_for", "mean"),
             avg_points_allowed=("points_against", "mean"),
+            pace=("total_points", "mean"),
         )
         .sort_values(["Season", "TeamID"])
         .reset_index(drop=True)
@@ -229,6 +232,97 @@ def build_late5_form_split_features(
         .agg(
             late5_off_eff=("late5_off_eff", "mean"),
             late5_def_eff=("late5_def_eff", "mean"),
+        )
+        .sort_values(["Season", "TeamID"])
+        .reset_index(drop=True)
+    )
+
+
+def build_opponent_raw_boxscore_features(
+    regular_season_detailed_results: pd.DataFrame,
+    *,
+    day_cutoff: int = 134,
+) -> pd.DataFrame:
+    """Build team-season averages of opponent raw box-score stats."""
+    required = {
+        "Season",
+        "DayNum",
+        "WTeamID",
+        "LTeamID",
+        "WScore",
+        "LScore",
+        "WFGA",
+        "LFGA",
+        "WBlk",
+        "LBlk",
+        "WPF",
+        "LPF",
+        "WTO",
+        "LTO",
+        "WStl",
+        "LStl",
+    }
+    missing = required.difference(regular_season_detailed_results.columns)
+    if missing:
+        raise ValueError(
+            f"Regular season detailed results missing required columns: {sorted(missing)}"
+        )
+
+    filtered = regular_season_detailed_results.loc[
+        regular_season_detailed_results["DayNum"] < day_cutoff
+    ].copy()
+    rows: list[dict[str, float | int]] = []
+    for _, row in filtered.iterrows():
+        season = int(row["Season"])
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["WTeamID"]),
+                "avg_opp_score": float(row["LScore"]),
+                "avg_opp_fga": float(row["LFGA"]),
+                "avg_opp_blk": float(row["LBlk"]),
+                "avg_opp_pf": float(row["LPF"]),
+                "avg_opp_to": float(row["LTO"]),
+                "avg_opp_stl": float(row["LStl"]),
+            }
+        )
+        rows.append(
+            {
+                "Season": season,
+                "TeamID": int(row["LTeamID"]),
+                "avg_opp_score": float(row["WScore"]),
+                "avg_opp_fga": float(row["WFGA"]),
+                "avg_opp_blk": float(row["WBlk"]),
+                "avg_opp_pf": float(row["WPF"]),
+                "avg_opp_to": float(row["WTO"]),
+                "avg_opp_stl": float(row["WStl"]),
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "Season",
+                "TeamID",
+                "avg_opp_score",
+                "avg_opp_fga",
+                "avg_opp_blk",
+                "avg_opp_pf",
+                "avg_opp_to",
+                "avg_opp_stl",
+            ]
+        )
+
+    return (
+        pd.DataFrame(rows)
+        .groupby(["Season", "TeamID"], as_index=False)
+        .agg(
+            avg_opp_score=("avg_opp_score", "mean"),
+            avg_opp_fga=("avg_opp_fga", "mean"),
+            avg_opp_blk=("avg_opp_blk", "mean"),
+            avg_opp_pf=("avg_opp_pf", "mean"),
+            avg_opp_to=("avg_opp_to", "mean"),
+            avg_opp_stl=("avg_opp_stl", "mean"),
         )
         .sort_values(["Season", "TeamID"])
         .reset_index(drop=True)
@@ -1024,6 +1118,7 @@ def _attach_team_feature_diffs(
         "avg_margin",
         "avg_score",
         "avg_points_allowed",
+        "pace",
         "pythag_expectancy",
         "market_games",
         "market_implied_win_prob",
@@ -1031,6 +1126,12 @@ def _attach_team_feature_diffs(
         "season_momentum",
         "late5_off_eff",
         "late5_def_eff",
+        "avg_opp_score",
+        "avg_opp_fga",
+        "avg_opp_blk",
+        "avg_opp_pf",
+        "avg_opp_to",
+        "avg_opp_stl",
         "road_win_pct",
         "road_margin",
         "neutral_win_pct",
@@ -1139,6 +1240,8 @@ def _attach_team_feature_diffs(
     merged["margin_diff"] = merged["low_avg_margin"] - merged["high_avg_margin"]
     if {"low_pythag_expectancy", "high_pythag_expectancy"}.issubset(merged.columns):
         merged["pythag_diff"] = merged["low_pythag_expectancy"] - merged["high_pythag_expectancy"]
+    if {"low_pace", "high_pace"}.issubset(merged.columns):
+        merged["pace_diff"] = merged["low_pace"] - merged["high_pace"]
     if {"low_market_implied_strength", "high_market_implied_strength"}.issubset(merged.columns):
         merged["market_implied_strength_diff"] = (
             merged["low_market_implied_strength"] - merged["high_market_implied_strength"]
@@ -1155,6 +1258,18 @@ def _attach_team_feature_diffs(
         merged["late5_off_diff"] = merged["low_late5_off_eff"] - merged["high_late5_off_eff"]
     if {"low_late5_def_eff", "high_late5_def_eff"}.issubset(merged.columns):
         merged["late5_def_diff"] = merged["high_late5_def_eff"] - merged["low_late5_def_eff"]
+    if {"low_avg_opp_score", "high_avg_opp_score"}.issubset(merged.columns):
+        merged["avg_opp_score_diff"] = merged["low_avg_opp_score"] - merged["high_avg_opp_score"]
+    if {"low_avg_opp_fga", "high_avg_opp_fga"}.issubset(merged.columns):
+        merged["avg_opp_fga_diff"] = merged["low_avg_opp_fga"] - merged["high_avg_opp_fga"]
+    if {"low_avg_opp_blk", "high_avg_opp_blk"}.issubset(merged.columns):
+        merged["avg_opp_blk_diff"] = merged["low_avg_opp_blk"] - merged["high_avg_opp_blk"]
+    if {"low_avg_opp_pf", "high_avg_opp_pf"}.issubset(merged.columns):
+        merged["avg_opp_pf_diff"] = merged["low_avg_opp_pf"] - merged["high_avg_opp_pf"]
+    if {"low_avg_opp_to", "high_avg_opp_to"}.issubset(merged.columns):
+        merged["avg_opp_to_diff"] = merged["low_avg_opp_to"] - merged["high_avg_opp_to"]
+    if {"low_avg_opp_stl", "high_avg_opp_stl"}.issubset(merged.columns):
+        merged["avg_opp_stl_diff"] = merged["low_avg_opp_stl"] - merged["high_avg_opp_stl"]
     if {"low_road_win_pct", "high_road_win_pct"}.issubset(merged.columns):
         merged["road_win_pct_diff"] = merged["low_road_win_pct"] - merged["high_road_win_pct"]
     if {"low_neutral_margin", "high_neutral_margin"}.issubset(merged.columns):

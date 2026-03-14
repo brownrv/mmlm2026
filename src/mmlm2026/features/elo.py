@@ -112,6 +112,8 @@ def compute_elo_momentum_features(
     winner_bonus: float = 0.0,
     early_k_boost_games: int = 0,
     early_k_multiplier: float = 1.0,
+    team_conferences: pd.DataFrame | None = None,
+    conference_reversion: bool = False,
 ) -> pd.DataFrame:
     """Compute team-season Elo momentum as end-of-season Elo minus mid-season Elo."""
     mid_ratings = compute_pre_tourney_elo_ratings(
@@ -128,6 +130,8 @@ def compute_elo_momentum_features(
         winner_bonus=winner_bonus,
         early_k_boost_games=early_k_boost_games,
         early_k_multiplier=early_k_multiplier,
+        team_conferences=team_conferences,
+        conference_reversion=conference_reversion,
     ).rename(columns={"elo": "mid_elo"})
     end_ratings = compute_pre_tourney_elo_ratings(
         regular_season_results,
@@ -143,6 +147,8 @@ def compute_elo_momentum_features(
         winner_bonus=winner_bonus,
         early_k_boost_games=early_k_boost_games,
         early_k_multiplier=early_k_multiplier,
+        team_conferences=team_conferences,
+        conference_reversion=conference_reversion,
     ).rename(columns={"elo": "end_elo"})
 
     momentum = end_ratings.merge(
@@ -171,12 +177,23 @@ def compute_pre_tourney_elo_ratings(
     winner_bonus: float = 0.0,
     early_k_boost_games: int = 0,
     early_k_multiplier: float = 1.0,
+    team_conferences: pd.DataFrame | None = None,
+    conference_reversion: bool = False,
 ) -> pd.DataFrame:
     """Compute pre-tournament Elo snapshots with optional carryover and MOV weighting."""
     required = {"Season", "DayNum", "WTeamID", "LTeamID", "WLoc"}
     missing = required.difference(regular_season_results.columns)
     if missing:
         raise ValueError(f"Regular season results missing required columns: {sorted(missing)}")
+    if conference_reversion:
+        if team_conferences is None:
+            raise ValueError("team_conferences is required when conference_reversion=True")
+        required_conf = {"Season", "TeamID", "ConfAbbrev"}
+        missing_conf = required_conf.difference(team_conferences.columns)
+        if missing_conf:
+            raise ValueError(
+                f"Team conferences missing required columns: {sorted(missing_conf)}"
+            )
 
     regular = (
         regular_season_results.loc[regular_season_results["DayNum"] < day_cutoff]
@@ -197,6 +214,7 @@ def compute_pre_tourney_elo_ratings(
 
     rows: list[dict[str, float | int]] = []
     previous_ratings: dict[int, float] = {}
+    previous_conference_means: dict[str, float] = {}
     seasons = sorted(int(season) for season in regular["Season"].unique())
     for season in seasons:
         regular_games = regular.loc[regular["Season"] == season].copy()
@@ -209,13 +227,21 @@ def compute_pre_tourney_elo_ratings(
             season_teams.update(int(team) for team in tourney_games["WTeamID"].tolist())
             season_teams.update(int(team) for team in tourney_games["LTeamID"].tolist())
 
+        season_conf_map = (
+            _season_conference_map(team_conferences, season)
+            if conference_reversion and team_conferences is not None
+            else {}
+        )
         season_ratings = {
-            team: (
-                season_carryover * previous_ratings[team]
-                + (1.0 - season_carryover) * initial_rating
+            team: _initial_season_rating(
+                team=team,
+                previous_ratings=previous_ratings,
+                season_carryover=season_carryover,
+                initial_rating=initial_rating,
+                conference_reversion=conference_reversion,
+                conference_abbrev=season_conf_map.get(team),
+                previous_conference_means=previous_conference_means,
             )
-            if team in previous_ratings
-            else initial_rating
             for team in sorted(season_teams)
         }
         season_game_counts = {team: 0 for team in season_ratings}
@@ -258,6 +284,8 @@ def compute_pre_tourney_elo_ratings(
                     winner_bonus=winner_bonus,
                 )
         previous_ratings = season_ratings
+        if conference_reversion:
+            previous_conference_means = _conference_mean_ratings(season_ratings, season_conf_map)
 
     return pd.DataFrame(rows).sort_values(["Season", "TeamID"]).reset_index(drop=True)
 
@@ -641,6 +669,51 @@ def _effective_k_factor(
     winner_multiplier = float(early_k_multiplier) if winner_games < early_k_boost_games else 1.0
     loser_multiplier = float(early_k_multiplier) if loser_games < early_k_boost_games else 1.0
     return float(base_k_factor) * ((winner_multiplier + loser_multiplier) / 2.0)
+
+
+def _season_conference_map(team_conferences: pd.DataFrame, season: int) -> dict[int, str]:
+    season_rows = team_conferences.loc[
+        team_conferences["Season"] == season,
+        ["TeamID", "ConfAbbrev"],
+    ]
+    return {
+        int(row["TeamID"]): str(row["ConfAbbrev"])
+        for _, row in season_rows.dropna(subset=["ConfAbbrev"]).iterrows()
+    }
+
+
+def _conference_mean_ratings(
+    ratings: dict[int, float],
+    conference_map: dict[int, str],
+) -> dict[str, float]:
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for team_id, rating in ratings.items():
+        conf = conference_map.get(team_id)
+        if conf is None:
+            continue
+        sums[conf] = sums.get(conf, 0.0) + float(rating)
+        counts[conf] = counts.get(conf, 0) + 1
+    return {conf: sums[conf] / counts[conf] for conf in sums if counts[conf] > 0}
+
+
+def _initial_season_rating(
+    *,
+    team: int,
+    previous_ratings: dict[int, float],
+    season_carryover: float,
+    initial_rating: float,
+    conference_reversion: bool,
+    conference_abbrev: str | None,
+    previous_conference_means: dict[str, float],
+) -> float:
+    if team not in previous_ratings:
+        return float(initial_rating)
+
+    reversion_target = float(initial_rating)
+    if conference_reversion and conference_abbrev is not None:
+        reversion_target = float(previous_conference_means.get(conference_abbrev, initial_rating))
+    return season_carryover * previous_ratings[team] + (1.0 - season_carryover) * reversion_target
 
 
 def _rounds_from_seed_pairs(

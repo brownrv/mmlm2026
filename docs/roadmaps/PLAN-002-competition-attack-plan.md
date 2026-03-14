@@ -149,6 +149,52 @@ The repository now contains several non-Kaggle datasets that are explicitly in s
 - `data/processed/espn/` is the best source for improving internal strength ratings and situational features, especially if the objective is a better latent team-quality model rather than a broader final classifier.
 - `data/processed/tourney_forecasts/` is **conditional on data availability confirmed post-Selection Sunday (March 15)**. If a clean source with full M+W team coverage is secured, this is the highest-leverage remaining external signal because it is bracket-aware and orthogonal to all internal Elo/GBT features. **Preferred source: COOPER (Silver Bulletin)** — injury-adjusted bracket simulations that run 'hot' (team ratings update during simulation based on simulated game results, giving a more realistic posterior for later rounds); blends COOPER 5/8 + KenPom/Her Hoop Stats 3/8. If COOPER is not accessible, fall back to ESPN, T-Rank, or teamrankings.com. If data cannot be secured by 2026-03-16, skip LATE-EXT-04 entirely and proceed with the frozen leaders.
 
+### 1.3.2 Revised Detailed Data Refresh Gate
+
+**New pre-release detailed files:** Kaggle supplied revised detailed-results files for `2021-2026`:
+- `data/raw/march-machine-learning-mania-2026/MRegularSeasonDetailedResults_2021_2026.csv`
+- `data/raw/march-machine-learning-mania-2026/WRegularSeasonDetailedResults_2021_2026.csv`
+- `data/raw/march-machine-learning-mania-2026/MNCAATourneyDetailedResults_2021_2026.csv`
+- `data/raw/march-machine-learning-mania-2026/WNCAATourneyDetailedResults_2021_2026.csv`
+
+These are supplemental pre-release files that correct known detailed-stat issues and will be incorporated into the official Selection Sunday data release. They cover only seasons `2021-2026` and only through `DayNum 118` for `2026`.
+
+**Planning stance:** treat this as a targeted data-refresh gate, not a full-model reset. External reports suggest only small metric movement overall, but several local promotion decisions were narrow enough that detailed-data-dependent experiments must be re-tested before final freeze.
+
+**Pre-Selection Sunday checklist:**
+- [ ] Record a manifest for the four revised files: row counts, season coverage, max `DayNum`, file hashes, and note that they are pre-release replacements for `2021-2026` detailed data only.
+- [ ] Run a raw-data audit comparing original Kaggle detailed files vs revised detailed files by league, season, and stat. Summarize changed rows/games and emphasize `Blk`, `Stl`, `WTO`, `LTO`, `OR`, and `DR`.
+- [ ] Re-run the local Kaggle-vs-ESPN discrepancy audit on the revised detailed files and archive the before/after comparison.
+- [ ] Build and maintain a dependency matrix classifying every important model/feature branch as `Unaffected`, `Possibly affected`, or `Must re-test`.
+- [ ] Rebuild all derived features that depend on Kaggle detailed stats for seasons `2021-2026`.
+- [ ] Re-run unit/integration tests for detailed-data feature builders before any challenger re-test.
+- [ ] Re-test all decision-sensitive experiments that depend on detailed data, prioritizing any challenger or promoted model within roughly `0.001` flat Brier of the relevant frozen leader.
+- [ ] Explicitly verify whether the current frozen leaders consume Kaggle detailed-derived features anywhere in their actual training path; do not assume a model is unaffected without checking its real feature dependencies.
+- [ ] Update `docs/experiments/experiment-log.md` and `docs/roadmaps/EXECUTION_STATUS.md` with a short refresh note once the dependency audit and targeted re-tests are complete.
+
+**Post Selection Sunday data-release checklist:**
+- [ ] Verify whether the official Selection Sunday release matches these supplemental files for `2021-2026` through `DayNum 118`; if not, compute and archive the delta immediately.
+- [ ] Re-run the same raw-data diff audit against the official release; do not assume exact equality.
+- [ ] Rebuild final production feature artifacts from the official release only.
+- [ ] Re-run the frozen models end to end on the official release: feature generation, inference, submission build, validation, and bracket diagnostics.
+- [ ] If the official release differs materially from the supplemental files, re-run the same targeted detailed-data re-test set before final submission freeze.
+- [ ] Re-run `VAL-03` and any frozen historical-performance export meant to reflect the final production data.
+- [ ] Confirm live readiness of all external dependencies used by the frozen pair (for example ESPN or market joins) after the official data refresh lands.
+
+**Required re-test scope:**
+- `Must re-test`: any experiment using Kaggle detailed regular-season or tournament box-score stats; any feature family based on possessions, pace, rebounds, steals, blocks, turnovers, or detailed-derived team summaries; any promoted result or near-miss decided by a very small held-out margin.
+- `Probably safe / lower priority`: pure seed/Elo/conference experiments using compact results only, market-only experiments, and ESPN-only branches that do not consume Kaggle detailed stats except through comparison audits.
+
+**Known local candidates to revisit if their feature path depends on revised detailed data:**
+- `MH7-FEAT-01`
+- `MH7-FEAT-02`
+- `COOPER-FEAT-01` only if its implementation is changed to use revised detailed-data inputs; under the current compact-results-only definition it is lower priority for the refresh gate
+- `LATE-RATE-01` slices using detailed-derived strength
+- `LATE-FEAT-24` or any late-form branch using detailed-derived splits
+- any current or former women leader candidate promoted on a very narrow margin if detailed-derived features are in the path
+
+**Decision rule for the refresh:** do not reopen the full leaderboard by default. Re-test all detailed-data-dependent models and all near-ties, then keep unaffected branches frozen unless the revised data materially changes a dependent winner.
+
 ### 1.4 Feature Pre-Registration
 
 Features must be registered before fitting. For each feature, record:
@@ -491,9 +537,9 @@ The original Gates 0–3 establish a disciplined frozen-pair baseline. The queue
 
 | Rank | ID | Challenger | League | Expected Payoff | Effort | Why lower priority |
 |---|---|---|---|---|---|---|
-| 9 | LATE-EMB-01 | Men team embeddings from regular-season game graph | M | Medium | High | Useful if treated as a latent-strength feature generator, but slower to build and validate |
-| 10 | LATE-EMB-02 | Women team embeddings from regular-season game graph | W | Medium | High | Same concept, but women likely benefit more first from better upstream data/rating construction |
-| 11 | LATE-NN-01 | End-to-end shallow neural tournament model | M+W | Low-Medium | High | Least attractive before deadline; calibration and overfitting risk are high for the likely marginal upside |
+| 10 | LATE-EMB-01 | Men team embeddings from regular-season game graph | M | Medium | High | Useful if treated as a latent-strength feature generator, but slower to build and validate |
+| 11 | LATE-EMB-02 | Women team embeddings from regular-season game graph | W | Medium | High | Same concept, but women likely benefit more first from better upstream data/rating construction |
+| 12 | LATE-NN-01 | End-to-end shallow neural tournament model | M+W | Low-Medium | High | Least attractive before deadline; calibration and overfitting risk are high for the likely marginal upside |
 
 #### Tier 4 — Notebook- and methodology-derived feature and training scheme challengers
 
@@ -530,29 +576,17 @@ All challengers in this tier use Kaggle competition data only (no external datas
 | `data/processed/espn/` | `LATE-RATE-01`, `LATE-RATE-02`, `LATE-EXT-03`, embedding challengers | Build better team-level possessions, four factors, and player-agnostic form summaries rather than immediately training a large model directly on event-level data |
 | `data/processed/tourney_forecasts/` | `LATE-EXT-04` (sub-approach A first, then B and C) | Confirm data coverage for all tournament teams M+W; map team names to Kaggle TeamIDs via `data/TeamSpellings.csv`; use only forecasts from the earliest available pre-tournament date (before Selection Sunday); attempt direct `goto_conversion` H2H blend before building conditional-strength feature pipeline |
 
-#### Recommended execution order while time remains
+#### Remaining execution order from the current state
 
-1. `LATE-ARCH-RG-07` — routed men `R1` / `R2+` model
-2. `LATE-ARCH-RG-08` — routed women `R1` / `R2+` model
-3. `LATE-RATE-01` — improved men latent strength model
-4. `LATE-RATE-02` — improved women latent strength model
-5. `LATE-MKT-01` — BetExplorer odds prior / calibration challenger if joins are clean
-   - `LATE-EXT-04` — tournament-progression forecast challenger **if and only if** a clean 2026 data source is confirmed post-Selection Sunday; attempt sub-approach A (direct blend via `goto_conversion`) first before building conditional-strength features
-6. `LATE-EXT-01` / `LATE-EXT-02` — benchmark-guided men/women gap analysis and targeted challenger design
-7. `LATE-EXT-03` — ESPN-derived advanced strength/situational features
-8. `LATE-EMB-01` / `LATE-EMB-02` only if the earlier, simpler challenger classes stall
-9. `LATE-FEAT-21` — tournament-only Elo (low effort, new persistent-pedigree signal)
-10. `LATE-FEAT-22` + `LATE-FEAT-26` + `LATE-FEAT-23` — Elo momentum, Pythagorean expectancy, seed-Elo gap (bundle: all derived from existing Elo/seed/score data)
-11. `LATE-ARCH-DW-01` — decay-weighted training test on current best model per league
-12. `LATE-ARCH-META-01` — logit-Ridge meta-learner swap in COMBO-03/04
-13. `LATE-FEAT-25` + `LATE-FEAT-28` — season momentum and win quality bins
-14. `LATE-FEAT-30` — Massey PCA and disagreement features (men only)
-15. `LATE-FEAT-24` + `LATE-FEAT-27` + `LATE-FEAT-29` + `LATE-FEAT-31` — late-5 form, neutral-site profiles, conference percentile, program pedigree (if time allows)
-16. `LATE-ARCH-CB-01` — CatBoost base learner (only if diversity audit shows high OOF correlation among current ensemble members)
-17. `COOPER-ARCH-01` + `COOPER-ARCH-04` — win-bonus Elo and variable k-factor (trivial, implement as a single Elo variant run; test `elo_diff` from this variant as a drop-in replacement in existing models)
-18. `COOPER-ARCH-03` — conference mean Elo reversion (low effort; implement as an Elo initialization change; `MTeamConferences.csv` / `WTeamConferences.csv` confirmed in `data/raw/`)
-19. `COOPER-FEAT-01` — pace feature as standalone GBT input (requires only compact results; derived from existing data)
-20. `COOPER-ARCH-02` — impact-factor weighted Elo / GLM fitting (medium effort; attempt only if items 17–19 show signal)
+The original late-challenger queue above remains useful as a historical prioritization record, but many of the early items are now complete. The live order below is the operational queue from the current freeze state.
+
+1. `LATE-EXT-04` — tournament-progression forecast challenger **if and only if** a clean 2026 data source is confirmed post-Selection Sunday; attempt sub-approach A (direct blend via `goto_conversion`) first before building conditional-strength features
+2. `LATE-ARCH-CB-01` — CatBoost base learner (only if diversity audit shows high OOF correlation among current ensemble members)
+3. `COOPER-ARCH-02` — impact-factor weighted Elo / GLM fitting (only because `COOPER-ARCH-01 + COOPER-ARCH-04` already showed real women-side signal)
+4. `LATE-EMB-01` / `LATE-EMB-02` — team embeddings only if the cheaper remaining model-family challengers stall
+5. `LATE-NN-01` — end-to-end shallow neural model only if explicitly pursuing a higher-risk research branch
+
+**Completed major late-queue items:** `LATE-ARCH-RG-07`, `LATE-ARCH-RG-08`, `LATE-RATE-01`, `LATE-RATE-02`, `LATE-MKT-01`, `LATE-EXT-01`, `LATE-EXT-02`, `LATE-EXT-03`, `LATE-FEAT-21`, `LATE-FEAT-22`, `LATE-FEAT-23`, `LATE-FEAT-24`, `LATE-FEAT-25`, `LATE-FEAT-26`, `LATE-FEAT-29`, `LATE-FEAT-30`, `LATE-ARCH-DW-01`, `LATE-ARCH-META-01`, `COOPER-ARCH-01`, `COOPER-ARCH-03`, `COOPER-ARCH-04`, `COOPER-FEAT-01`, `MH7-FEAT-01`, and `MH7-FEAT-02`.
 
 **Execution note:** `LATE-EXT-01` and `LATE-EXT-02` are benchmark-guided challenger-design tasks, not standalone promotion criteria. They exist to identify high-leverage cells and define the next testable challenger; they do not replace played-game held-out flat-Brier model selection.
 

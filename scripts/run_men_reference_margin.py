@@ -34,6 +34,7 @@ from mmlm2026.features.primary import (
     build_conference_percentile_features,
     build_late5_form_split_features,
     build_market_implied_strength_features,
+    build_opponent_raw_boxscore_features,
     build_phase_ab_matchup_features,
     build_phase_ab_team_features,
     build_phase_ab_tourney_features,
@@ -140,6 +141,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include conference percentile rank differential as an extra feature.",
     )
     parser.add_argument(
+        "--include-pace",
+        action="store_true",
+        help="Include team pace differential as an extra feature.",
+    )
+    parser.add_argument(
+        "--include-opp-boxscore",
+        action="store_true",
+        help="Include opponent raw box-score average differentials as extra features.",
+    )
+    parser.add_argument(
         "--include-glm-quality",
         action="store_true",
         help="Include season-level OLS team-quality differential as an extra feature.",
@@ -176,6 +187,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--elo-winner-bonus", type=float, default=0.0)
     parser.add_argument("--elo-early-k-boost-games", type=int, default=0)
     parser.add_argument("--elo-early-k-multiplier", type=float, default=1.0)
+    parser.add_argument("--elo-conference-reversion", action="store_true")
     return parser
 
 
@@ -219,6 +231,8 @@ def main() -> int:
         winner_bonus=args.elo_winner_bonus,
         early_k_boost_games=args.elo_early_k_boost_games,
         early_k_multiplier=args.elo_early_k_multiplier,
+        team_conferences=team_conferences,
+        conference_reversion=args.elo_conference_reversion,
     )
     team_features = build_phase_ab_team_features(
         regular_season,
@@ -253,6 +267,8 @@ def main() -> int:
             winner_bonus=args.elo_winner_bonus,
             early_k_boost_games=args.elo_early_k_boost_games,
             early_k_multiplier=args.elo_early_k_multiplier,
+            team_conferences=team_conferences,
+            conference_reversion=args.elo_conference_reversion,
         )[["Season", "TeamID", "elo_momentum"]]
         team_features = team_features.merge(
             elo_momentum,
@@ -307,6 +323,17 @@ def main() -> int:
         )
         team_features = team_features.merge(
             conf_rank,
+            on=["Season", "TeamID"],
+            how="left",
+            validate="one_to_one",
+        )
+    if args.include_opp_boxscore:
+        opp_box = build_opponent_raw_boxscore_features(
+            regular_season_detailed,
+            day_cutoff=args.day_cutoff,
+        )
+        team_features = team_features.merge(
+            opp_box,
             on=["Season", "TeamID"],
             how="left",
             validate="one_to_one",
@@ -460,6 +487,19 @@ def main() -> int:
         feature_cols.extend(["late5_off_diff", "late5_def_diff"])
     if args.include_conference_rank:
         feature_cols.append("conf_pct_rank_diff")
+    if args.include_pace:
+        feature_cols.append("pace_diff")
+    if args.include_opp_boxscore:
+        feature_cols.extend(
+            [
+                "avg_opp_score_diff",
+                "avg_opp_fga_diff",
+                "avg_opp_blk_diff",
+                "avg_opp_pf_diff",
+                "avg_opp_to_diff",
+                "avg_opp_stl_diff",
+            ]
+        )
     if args.include_glm_quality:
         feature_cols.append("glm_quality_diff")
     if args.include_massey_pca:
@@ -515,6 +555,19 @@ def main() -> int:
         calibration_feature_cols.extend(["late5_off_diff", "late5_def_diff"])
     if args.include_conference_rank:
         calibration_feature_cols.append("conf_pct_rank_diff")
+    if args.include_pace:
+        calibration_feature_cols.append("pace_diff")
+    if args.include_opp_boxscore:
+        calibration_feature_cols.extend(
+            [
+                "avg_opp_score_diff",
+                "avg_opp_fga_diff",
+                "avg_opp_blk_diff",
+                "avg_opp_pf_diff",
+                "avg_opp_to_diff",
+                "avg_opp_stl_diff",
+            ]
+        )
     if args.include_glm_quality:
         calibration_feature_cols.append("glm_quality_diff")
     if args.include_massey_pca:
@@ -1002,6 +1055,8 @@ def _log_mlflow_run(
             )
             + (",feature:late_feat_24_late5_split_v1" if args.include_late5_form else "")
             + (",feature:late_feat_29_conf_pct_rank_v1" if args.include_conference_rank else "")
+            + (",feature:cooper_feat_01_pace_v1" if args.include_pace else "")
+            + (",feature:mh7_feat_02_opp_boxscore_v1" if args.include_opp_boxscore else "")
             + (",feature:mh7_feat_01_glm_quality_v1" if args.include_glm_quality else "")
             + (",feature:late_feat_30_massey_pca_v1" if args.include_massey_pca else "")
             + (",feature:late_feat_bundle_24_27_28_29_31_v1" if args.include_late_bundle else "")
@@ -1031,6 +1086,8 @@ def _log_mlflow_run(
                 "include_market_strength": str(args.include_market_strength).lower(),
                 "include_late5_form": str(args.include_late5_form).lower(),
                 "include_conference_rank": str(args.include_conference_rank).lower(),
+                "include_pace": str(args.include_pace).lower(),
+                "include_opp_boxscore": str(args.include_opp_boxscore).lower(),
                 "include_glm_quality": str(args.include_glm_quality).lower(),
                 "include_massey_pca": str(args.include_massey_pca).lower(),
                 "include_late_bundle": str(args.include_late_bundle).lower(),
@@ -1039,6 +1096,7 @@ def _log_mlflow_run(
                 "elo_winner_bonus": args.elo_winner_bonus,
                 "elo_early_k_boost_games": args.elo_early_k_boost_games,
                 "elo_early_k_multiplier": args.elo_early_k_multiplier,
+                "elo_conference_reversion": str(args.elo_conference_reversion).lower(),
                 "temperature": temperature,
                 "alpha": alpha,
             }
